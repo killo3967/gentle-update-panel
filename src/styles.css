@@ -2144,6 +2144,29 @@ button {
   margin-right: var(--space-2);
 }
 
+.release-arrow {
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--panel-2);
+  color: var(--muted);
+  transition: background 130ms ease, color 130ms ease, border-color 130ms ease;
+}
+
+.release-arrow:hover:not(:disabled) {
+  background: var(--panel-3);
+  border-color: var(--line-strong);
+  color: var(--text);
+}
+
+.release-arrow:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
 .release-counter {
   font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;

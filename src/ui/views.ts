@@ -280,9 +280,9 @@ function renderDetail(item: UpdateItem): string {
     <div class="actions">
       ${actionable ? `<button class="btn btn-primary" data-action="apply-one" data-id="${esc(item.id)}" ${state.applying ? "disabled" : ""}>${icons.arrowRight}<span>${item.installed ? `Actualizar a ${esc(item.latest ?? "")}` : "Instalar"}</span></button>` : ""}
       <button class="btn" data-action="load-notes" data-id="${esc(item.id)}">${icons.refresh}<span>Ver notas</span></button>
-      ${notes?.url ? `<button class="btn btn-ghost" data-action="open-url" data-url="${esc(notes.url)}">${icons.external}<span>Abrir en el navegador</span></button>` : ""}
-      <button class="btn btn-ghost" data-action="doctor">${icons.stethoscope}<span>Doctor</span></button>
-      <button class="btn btn-ghost" data-action="toggle-ignored" data-id="${esc(item.id)}">
+      ${notes?.url ? `<button class="btn" data-action="open-url" data-url="${esc(notes.url)}">${icons.external}<span>Abrir en el navegador</span></button>` : ""}
+      <button class="btn" data-action="doctor">${icons.stethoscope}<span>Doctor</span></button>
+      <button class="btn" data-action="toggle-ignored" data-id="${esc(item.id)}">
         ${ignored ? icons.check : icons.x}<span>${ignored ? "Dejar de ignorar" : "Ignorar"}</span>
       </button>
     </div>
@@ -296,18 +296,16 @@ function renderNotes(
   notes: import("../types").NotesPayload | undefined,
   loading: boolean,
 ): string {
-  const stale = item.status === "upToDate";
-
   if (loading && !notes) {
     return `<section class="card notes-card">
-      <header class="card-head"><h2 class="card-title">${stale ? "Notas de la versión instalada" : "Qué trae de nuevo"}</h2></header>
+      <header class="card-head"><h2 class="card-title">Notas de versión</h2></header>
       <div class="notes-loading"><span class="spinner" aria-hidden="true"></span><span>Cargando notas de ${esc(item.name)}…</span></div>
     </section>`;
   }
 
   if (!notes) {
     return `<section class="card notes-card">
-      <header class="card-head"><h2 class="card-title">${stale ? "Notas de la versión instalada" : "Qué trae de nuevo"}</h2></header>
+      <header class="card-head"><h2 class="card-title">Notas de versión</h2></header>
       <div class="notes-empty"><p>Aún no se han cargado las notas de esta pieza.</p>
       <button class="btn btn-small" data-action="load-notes" data-id="${esc(item.id)}">Cargar notas</button></div>
     </section>`;
@@ -321,17 +319,17 @@ function renderNotes(
   const nav =
     total > 1
       ? `<div class="release-nav" role="group" aria-label="Versiones">
-          <button class="icon-btn" data-action="release-prev" data-id="${esc(item.id)}"
-            ${index <= 0 ? "disabled" : ""} aria-label="Versión más reciente" title="Versión más reciente">←</button>
+          <button class="release-arrow" data-action="release-prev" data-id="${esc(item.id)}"
+            ${index <= 0 ? "disabled" : ""} aria-label="Versión más reciente" title="Versión más reciente">${icons.chevronLeft}</button>
           <span class="release-counter">${index + 1} / ${total}</span>
-          <button class="icon-btn" data-action="release-next" data-id="${esc(item.id)}"
-            ${index >= total - 1 ? "disabled" : ""} aria-label="Versión anterior" title="Versión anterior">→</button>
+          <button class="release-arrow" data-action="release-next" data-id="${esc(item.id)}"
+            ${index >= total - 1 ? "disabled" : ""} aria-label="Versión anterior" title="Versión anterior">${icons.chevronRight}</button>
         </div>`
       : "";
 
   return `<section class="card notes-card">
     <header class="card-head">
-      <h2 class="card-title">${stale ? "Notas de la versión instalada" : "Qué trae de nuevo"}</h2>
+      <h2 class="card-title">Notas de la versión ${esc(release?.version ?? "")}</h2>
       <div class="card-tools">
         ${nav}
         <button class="btn btn-small ${state.config?.translationEnabled ? "btn-primary" : ""}" data-action="toggle-translation">

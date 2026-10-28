@@ -246,6 +246,8 @@ export const icons = {
   alert: svg('<path d="M12 3 2.5 20h19L12 3Z"/><path d="M12 9v5"/><path d="M12 17h.01"/>', 14),
   copy: svg('<rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/>', 14),
   chevron: svg('<path d="m6 9 6 6 6-6"/>', 14),
+  chevronLeft: svg('<path d="m15 5-7 7 7 7"/>', 14),
+  chevronRight: svg('<path d="m9 5 7 7-7 7"/>', 14),
   minimize: svg('<path d="M5 12h14"/>', 10, 1.6),
   maximize: svg('<rect x="5" y="5" width="14" height="14" rx="1.5"/>', 10, 1.6),
   close: svg('<path d="M6 6l12 12"/><path d="M18 6 6 18"/>', 10, 1.6),
