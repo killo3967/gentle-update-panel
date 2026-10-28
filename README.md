@@ -63,16 +63,6 @@ src-tauri/src/
   state.rs           config, snapshot y doctor persistidos
 ```
 
-Decisiones que conviene conocer:
-
-- `gentle-ai` **no** ofrece salida JSON para `update`/`doctor`: los parsers trabajan sobre texto real, con fixtures tomados de la máquina y cubiertos por tests.
-- `pi update` sin banderas **solo actualiza pi**; los paquetes necesitan `--extensions`, `--all` o `--extension <source>`.
-- En Windows, `pi` es un shim `.cmd` y en `PATH` conviven un script POSIX sin extensión y el `.cmd` real: el resolvedor solo acepta candidatos `PATHEXT`.
-- `cmd /C` no entiende el escapado de Rust, así que la línea se pasa con `raw_arg`.
-- El plugin `window-state` guarda solo tamaño, posición y maximizado: la visibilidad la decide la bandeja.
-- `reqwest` usa **native-tls** (SChannel en Windows) y no rustls: el endpoint gratuito de Google devuelve 429 a la huella TLS de rustls y 200 a la de SChannel. Microsoft funciona con cualquiera.
-- La traducción protege código y enlaces con `[[Tn]]`; si el traductor pierde un marcador, se descarta la traducción y se muestra el original.
-
 ## Datos
 
 Todo se guarda en `%APPDATA%\dev.gentle.update-panel\`:
@@ -85,6 +75,24 @@ Todo se guarda en `%APPDATA%\dev.gentle.update-panel\`:
 | `pi-health.json` | última verificación de instalación de pi y sus paquetes |
 | `notes-cache.json` | notas de versión (TTL 6 h) |
 | `translations.json` | traducciones cacheadas por versión, motor e idioma |
+
+## Releases
+
+Cada push a `main` pasa por `.github/workflows/release.yml`:
+
+1. Lee la versión de `src-tauri/Cargo.toml` y exige que coincida con `package.json` y `src-tauri/tauri.conf.json`.
+2. Si el tag `vX.Y.Z` ya existe, termina sin hacer nada.
+3. Si es nuevo, compila el instalador NSIS en `windows-latest`, publica la release con las notas que genera GitHub (`--generate-notes`, acotadas a la release anterior) y adjunta el `.exe`.
+
+Para publicar una versión basta con subir el número en los tres ficheros y hacer push:
+
+```bash
+npm version 0.4.0 --no-git-tag-version
+sed -i 's/^version = "0.3.0"/version = "0.4.0"/' src-tauri/Cargo.toml
+python -c "import json,io; p='src-tauri/tauri.conf.json'; d=json.load(open(p)); d['version']='0.4.0'; json.dump(d, open(p,'w'), indent=2)"
+```
+
+Si los tres números no coinciden, el workflow falla en el primer job antes de compilar nada.
 
 ## Desarrollo
 
