@@ -1,0 +1,134 @@
+name: Release
+
+# Every push to main is a candidate: the version comes from Cargo.toml, and a
+# release is published only when its tag does not exist yet. Bumping the version
+# is what turns a push into a release.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  version:
+    name: Read and check the version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.meta.outputs.version }}
+      tag: ${{ steps.meta.outputs.tag }}
+      exists: ${{ steps.meta.outputs.exists }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Read version and look for an existing tag
+        id: meta
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo_version=$(grep -m1 '^version = ' src-tauri/Cargo.toml | sed -E 's/.*"([^"]+)".*/\1/')
+          tauri_version=$(node -p "require('./src-tauri/tauri.conf.json').version")
+          package_version=$(node -p "require('./package.json').version")
+          echo "Cargo.toml: $cargo_version · tauri.conf.json: $tauri_version · package.json: $package_version"
+
+          if [ "$cargo_version" != "$tauri_version" ] || [ "$cargo_version" != "$package_version" ]; then
+            echo "::error::Version mismatch between src-tauri/Cargo.toml, src-tauri/tauri.conf.json and package.json"
+            exit 1
+          fi
+
+          tag="v$cargo_version"
+          if git ls-remote --exit-code --tags origin "refs/tags/$tag" >/dev/null 2>&1; then
+            exists=true
+            echo "Tag $tag already exists; this push has nothing to release."
+          else
+            exists=false
+            echo "Tag $tag is new; the release will be built."
+          fi
+
+          {
+            echo "version=$cargo_version"
+            echo "tag=$tag"
+            echo "exists=$exists"
+          } >> "$GITHUB_OUTPUT"
+
+  build:
+    name: Build the installer
+    needs: version
+    if: needs.version.outputs.exists == 'false'
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Build the NSIS installer
+        run: npm run tauri build
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: nsis-installer
+          path: src-tauri/target/release/bundle/nsis/*.exe
+          if-no-files-found: error
+          retention-days: 7
+
+  publish:
+    name: Publish the release
+    needs: [version, build]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: nsis-installer
+          path: dist
+
+      - name: Create the GitHub release with generated notes
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          tag="${{ needs.version.outputs.tag }}"
+          version="${{ needs.version.outputs.version }}"
+
+          previous=$(gh release list --repo "$GITHUB_REPOSITORY" --limit 1 \
+            --json tagName --jq '.[0].tagName // ""')
+
+          args=(
+            "$tag"
+            dist/*.exe
+            --repo "$GITHUB_REPOSITORY"
+            --title "Gentle Update Panel $version"
+            --generate-notes
+            --latest
+          )
+
+          if [ -n "$previous" ] && [ "$previous" != "$tag" ]; then
+            echo "Notes from $previous..$tag"
+            args+=(--notes-start-tag "$previous")
+          else
+            echo "No previous release; notes cover the whole history."
+          fi
+
+          gh release create "${args[@]}"
+
+          echo "### Release $tag published" >> "$GITHUB_STEP_SUMMARY"
+          gh release view "$tag" --repo "$GITHUB_REPOSITORY" --json url \
+            --jq '"Release: " + .url' >> "$GITHUB_STEP_SUMMARY"
