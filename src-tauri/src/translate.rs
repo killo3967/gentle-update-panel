@@ -19,6 +19,8 @@ use chrono::Utc;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 
+use crate::cache::{self, Cached, Limits};
+
 const GOOGLE_URL: &str = "https://translate.googleapis.com/translate_a/single";
 const MICROSOFT_URL: &str = "https://edge.microsoft.com/translate/translatetext";
 const GOOGLE_BLOCK: usize = 1_500;
@@ -210,6 +212,20 @@ struct CacheEntry {
     fetched_at: String,
 }
 
+impl Cached for CacheEntry {
+    fn fetched_at(&self) -> &str {
+        &self.fetched_at
+    }
+}
+
+/// A translation is keyed by the body hash, so untouched text is reused forever;
+/// the budgets are there only so dead versions cannot pile up.
+const CACHE_LIMITS: Limits = Limits {
+    max_entries: 300,
+    max_bytes: 3 * 1024 * 1024,
+    max_age_days: 90,
+};
+
 pub struct TranslationService {
     client: reqwest::Client,
     cache_path: PathBuf,
@@ -218,10 +234,10 @@ pub struct TranslationService {
 
 impl TranslationService {
     pub fn new(cache_path: PathBuf) -> Self {
-        let cache = std::fs::read_to_string(&cache_path)
-            .ok()
-            .and_then(|raw| serde_json::from_str::<HashMap<String, CacheEntry>>(&raw).ok())
-            .unwrap_or_default();
+        let mut cache: HashMap<String, CacheEntry> = cache::load(&cache_path);
+        if cache::prune(&mut cache, CACHE_LIMITS, Utc::now()) > 0 {
+            let _ = cache::store(&cache_path, &cache);
+        }
 
         let client = reqwest::Client::builder()
             .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64)")
@@ -308,6 +324,8 @@ impl TranslationService {
                     fetched_at: Utc::now().to_rfc3339(),
                 },
             );
+            // Bound the live map, not just the copy on disk.
+            cache::prune(&mut cache, CACHE_LIMITS, Utc::now());
             let snapshot = cache.clone();
             drop(cache);
             self.persist(&snapshot);
@@ -419,12 +437,7 @@ impl TranslationService {
     }
 
     fn persist(&self, cache: &HashMap<String, CacheEntry>) {
-        if let Ok(raw) = serde_json::to_string(cache) {
-            if let Some(parent) = self.cache_path.parent() {
-                let _ = std::fs::create_dir_all(parent);
-            }
-            let _ = std::fs::write(&self.cache_path, raw);
-        }
+        let _ = cache::store(&self.cache_path, cache);
     }
 }
 

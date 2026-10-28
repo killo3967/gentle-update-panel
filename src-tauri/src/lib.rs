@@ -1,4 +1,5 @@
 mod blockers;
+mod cache;
 mod cli;
 mod commands;
 mod doctor;

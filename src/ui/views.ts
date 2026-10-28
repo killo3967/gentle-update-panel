@@ -579,12 +579,14 @@ function renderJournal(): string {
   const entries = journalEntries();
   const oldest = all[0]?.at ?? null;
   const newest = all[all.length - 1]?.at ?? null;
+  // Derived from the backend path so a future rename never lies in the copy.
+  const fileName = state.journalPath.split(/[\\/]/).pop() || "journal.ndjson";
 
   const head = `<header class="view-head">
     <div class="view-head-copy">
       <div class="eyebrow">Registro</div>
       <h1 class="display">${all.length === 0 ? "Sin actividad todavía" : "Qué ha pasado"}</h1>
-      <p class="lead">${all.length === 0 ? "Cada comprobación, cada actualización y cada doctor se anotan aquí y se guardan en disco." : `${all.length} ${plural(all.length, "evento", "eventos")} · desde ${relativeTime(oldest)} · guardado en journal.json`}</p>
+      <p class="lead">${all.length === 0 ? "Cada comprobación, cada actualización y cada doctor se anotan aquí y se guardan en disco." : `${all.length} ${plural(all.length, "evento", "eventos")} · desde ${relativeTime(oldest)} · guardado en ${esc(fileName)}`}</p>
     </div>
     <div class="journal-stats">
       <span class="journal-stat"><strong>${all.length}</strong><em>${plural(all.length, "evento", "eventos")}</em></span>

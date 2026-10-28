@@ -1,21 +1,29 @@
 //! Durable journal of what the panel detected, applied and verified.
 //!
-//! It is a bounded ring buffer persisted to `journal.json`. The webview reads it
-//! once on boot and then appends the `journal:entry` events, so a check that runs
-//! while the panel is closed is not lost.
+//! It is an append-only NDJSON file plus a bounded in-memory ring: appending one
+//! line costs one line, and the file is only rewritten when it drifts past the
+//! capacity, so a chatty update cannot turn 200 stdout lines into 200 rewrites of
+//! the whole history. The webview reads the list once on boot and then appends
+//! the `journal:entry` events, so a check that runs while the panel is closed is
+//! not lost.
 
 use std::collections::VecDeque;
-use std::path::PathBuf;
+use std::io::Write;
+use std::path::{Path, PathBuf};
 
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, Manager};
 
 use crate::state::AppState;
-use crate::state::{read_json, write_json};
+use crate::state::read_json;
 
 /// Newest entries kept on disk. This is a log, not an archive.
 pub const CAPACITY: usize = 800;
+
+/// Rewrite the file once it holds this many lines: appends stay cheap and the
+/// file never drifts far from [`CAPACITY`].
+const COMPACT_AT: usize = CAPACITY + 200;
 
 /// Longest text stored per field: one runaway stdout line must not own the file.
 const MAX_TEXT: usize = 600;
@@ -25,6 +33,12 @@ pub const LINES_PER_STEP: usize = 200;
 
 /// Event emitted for every new entry.
 pub const EVENT: &str = "journal:entry";
+
+/// File name inside the app data directory.
+pub const FILE_NAME: &str = "journal.ndjson";
+
+/// Name used before the switch to one JSON document; imported once and removed.
+const LEGACY_FILE_NAME: &str = "journal.json";
 
 /// Entry kinds, shared with the webview.
 pub mod kind {
@@ -54,9 +68,10 @@ pub struct JournalEntry {
     pub stream: Option<String>,
 }
 
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+/// Shape of the old `journal.json`, kept only to import it.
+#[derive(Debug, Clone, Default, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
-struct JournalFile {
+struct LegacyFile {
     seq: u64,
     entries: Vec<JournalEntry>,
 }
@@ -104,23 +119,42 @@ pub struct Journal {
     path: PathBuf,
     seq: u64,
     entries: VecDeque<JournalEntry>,
+    /// Lines currently in the file, used to decide when to compact.
+    lines: usize,
 }
 
 impl Journal {
     pub fn new(path: PathBuf) -> Self {
-        let stored = read_json::<JournalFile>(&path).unwrap_or_default();
-        let mut entries: VecDeque<JournalEntry> = stored.entries.into();
-        let mut seq = stored.seq;
-        for entry in &entries {
-            seq = seq.max(entry.seq);
-        }
-        trim(&mut entries);
-
-        Self {
+        let mut journal = Self {
             path,
-            seq,
-            entries,
+            seq: 0,
+            entries: VecDeque::new(),
+            lines: 0,
+        };
+
+        if journal.path.exists() {
+            journal.read_ndjson();
+        } else {
+            journal.import_legacy();
         }
+
+        let loaded = journal.lines;
+        trim(&mut journal.entries);
+        if journal.lines != journal.entries.len() || loaded > CAPACITY {
+            journal.rewrite();
+        }
+
+        // The counter restarts from the file. After a wipe the file is empty, and
+        // the webview has no entries to collide with, so starting at zero is safe.
+        journal.seq = journal
+            .entries
+            .iter()
+            .map(|entry| entry.seq)
+            .max()
+            .unwrap_or(0)
+            .max(journal.seq);
+
+        journal
     }
 
     /// Oldest first: the webview renders the list reversed.
@@ -144,23 +178,92 @@ impl Journal {
             stream: draft.stream,
         };
 
+        if let Ok(line) = serde_json::to_string(&entry) {
+            if self.append(&line).is_ok() {
+                self.lines += 1;
+            } else {
+                // A failing disk must not lose the in-memory history.
+                self.rewrite();
+            }
+        }
+
         self.entries.push_back(entry.clone());
         trim(&mut self.entries);
-        self.persist();
+        if self.lines > COMPACT_AT {
+            self.rewrite();
+        }
         entry
     }
 
     pub fn clear(&mut self) {
         self.entries.clear();
-        self.persist();
+        self.rewrite();
     }
 
-    fn persist(&self) {
-        let file = JournalFile {
-            seq: self.seq,
-            entries: self.entries.iter().cloned().collect(),
+    fn append(&self, line: &str) -> std::io::Result<()> {
+        if let Some(parent) = self.path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        let mut file = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&self.path)?;
+        writeln!(file, "{line}")
+    }
+
+    /// Writes the whole in-memory history beside the target, then renames it.
+    fn rewrite(&mut self) {
+        let mut body = String::new();
+        for entry in &self.entries {
+            if let Ok(line) = serde_json::to_string(entry) {
+                body.push_str(&line);
+                body.push('\n');
+            }
+        }
+
+        if let Some(parent) = self.path.parent() {
+            let _ = std::fs::create_dir_all(parent);
+        }
+        let temporary = self.path.with_extension("ndjson.tmp");
+        if std::fs::write(&temporary, &body).is_ok()
+            && std::fs::rename(&temporary, &self.path).is_ok()
+        {
+            self.lines = self.entries.len();
+        }
+    }
+
+    fn read_ndjson(&mut self) {
+        let Ok(raw) = std::fs::read_to_string(&self.path) else {
+            return;
         };
-        let _ = write_json(&self.path, &file);
+
+        for line in raw.lines() {
+            let line = line.trim();
+            if line.is_empty() {
+                continue;
+            }
+            // A crash mid-append can leave one truncated line: drop that line,
+            // never the file.
+            if let Ok(entry) = serde_json::from_str::<JournalEntry>(line) {
+                self.lines += 1;
+                self.entries.push_back(entry);
+            }
+        }
+    }
+
+    fn import_legacy(&mut self) {
+        let legacy = self.path.with_file_name(LEGACY_FILE_NAME);
+        let Some(stored) = read_json::<LegacyFile>(&legacy) else {
+            return;
+        };
+
+        self.seq = stored.seq;
+        self.entries = stored.entries.into();
+        trim(&mut self.entries);
+        self.rewrite();
+        if self.lines == self.entries.len() {
+            let _ = std::fs::remove_file(&legacy);
+        }
     }
 }
 
@@ -220,17 +323,30 @@ pub fn clear(app: &AppHandle) {
 mod tests {
     use super::*;
 
-    fn temp_path(name: &str) -> PathBuf {
-        let mut path = std::env::temp_dir();
+    fn temp_dir(name: &str) -> PathBuf {
         let stamp = Utc::now().timestamp_nanos_opt().unwrap_or_default();
-        path.push(format!("gentle-journal-{name}-{}-{stamp}.json", std::process::id()));
-        path
+        let directory = std::env::temp_dir().join(format!(
+            "gentle-journal-{name}-{}-{stamp}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&directory).unwrap();
+        directory
+    }
+
+    fn journal_in(directory: &Path) -> Journal {
+        Journal::new(directory.join(FILE_NAME))
+    }
+
+    fn lines_on_disk(directory: &Path) -> usize {
+        std::fs::read_to_string(directory.join(FILE_NAME))
+            .map(|raw| raw.lines().filter(|line| !line.trim().is_empty()).count())
+            .unwrap_or(0)
     }
 
     #[test]
     fn keeps_only_the_newest_entries() {
-        let path = temp_path("cap");
-        let mut journal = Journal::new(path.clone());
+        let directory = temp_dir("cap");
+        let mut journal = journal_in(&directory);
 
         for index in 0..(CAPACITY + 12) {
             journal.push(Draft::new(kind::CHECK, format!("línea {index}")));
@@ -239,52 +355,104 @@ mod tests {
         let entries = journal.all();
         assert_eq!(entries.len(), CAPACITY);
         assert_eq!(entries.last().unwrap().title, format!("línea {}", CAPACITY + 11));
-        let _ = std::fs::remove_file(path);
+        assert!(
+            lines_on_disk(&directory) <= COMPACT_AT,
+            "the file compacts instead of growing without bound"
+        );
+        std::fs::remove_dir_all(directory).ok();
     }
 
     #[test]
     fn survives_a_reopen_with_monotonic_ids() {
-        let path = temp_path("reopen");
-        let mut journal = Journal::new(path.clone());
+        let directory = temp_dir("reopen");
+        let mut journal = journal_in(&directory);
         journal.push(Draft::new(kind::DETECTED, "uno"));
         let last = journal.push(Draft::new(kind::APPLIED, "dos")).seq;
 
-        let reopened = Journal::new(path.clone());
-        assert_eq!(reopened.all().len(), 2, "entries come back from disk");
+        let reopened = journal_in(&directory);
+        assert_eq!(reopened.all().len(), 2, "entries come back from the file");
         assert_eq!(reopened.all().last().unwrap().seq, last);
 
-        let mut journal = Journal::new(path.clone());
+        let mut journal = journal_in(&directory);
         assert_eq!(
             journal.push(Draft::new(kind::CHECK, "tres")).seq,
             last + 1,
             "ids keep growing after a restart"
         );
-        let _ = std::fs::remove_file(path);
+        std::fs::remove_dir_all(directory).ok();
     }
 
     #[test]
     fn clear_forgets_the_entries_but_not_the_sequence() {
-        let path = temp_path("clear");
-        let mut journal = Journal::new(path.clone());
+        let directory = temp_dir("clear");
+        let mut journal = journal_in(&directory);
         let last = journal.push(Draft::new(kind::CHECK, "uno")).seq;
         journal.clear();
 
         assert!(journal.all().is_empty());
-        assert_eq!(journal.push(Draft::new(kind::CHECK, "dos")).seq, last + 1);
+        assert_eq!(
+            journal.push(Draft::new(kind::CHECK, "dos")).seq,
+            last + 1,
+            "clearing does not recycle ids inside the session"
+        );
 
-        let reopened = Journal::new(path.clone());
+        let reopened = journal_in(&directory);
         assert_eq!(reopened.all().len(), 1, "clearing is persisted");
-        let _ = std::fs::remove_file(path);
+        std::fs::remove_dir_all(directory).ok();
+    }
+
+    #[test]
+    fn a_truncated_last_line_is_dropped_but_the_rest_survives() {
+        let directory = temp_dir("truncated");
+        let mut journal = journal_in(&directory);
+        journal.push(Draft::new(kind::CHECK, "buena"));
+        journal.push(Draft::new(kind::CHECK, "también buena"));
+
+        let path = directory.join(FILE_NAME);
+        let mut raw = std::fs::read_to_string(&path).unwrap();
+        raw.push_str("{\"seq\": 99, \"at\": \"2026-");
+        std::fs::write(&path, raw).unwrap();
+
+        let reopened = journal_in(&directory);
+        assert_eq!(reopened.all().len(), 2);
+        assert_eq!(reopened.all()[1].seq, 2, "the broken id never appears");
+        std::fs::remove_dir_all(directory).ok();
+    }
+
+    #[test]
+    fn imports_the_legacy_document_once() {
+        let directory = temp_dir("legacy");
+        let legacy = directory.join(LEGACY_FILE_NAME);
+        std::fs::write(
+            &legacy,
+            r#"{"seq":7,"entries":[
+                {"seq":6,"at":"2026-10-28T20:00:00+00:00","kind":"app","title":"viejo","detail":null,"itemId":null,"stream":null},
+                {"seq":7,"at":"2026-10-28T20:01:00+00:00","kind":"check","title":"otro","detail":null,"itemId":null,"stream":null}
+            ]}"#,
+        )
+        .unwrap();
+
+        let mut journal = journal_in(&directory);
+
+        assert_eq!(journal.all().len(), 2);
+        assert!(directory.join(FILE_NAME).exists(), "the new file is written");
+        assert!(!legacy.exists(), "the old document is gone");
+        assert_eq!(
+            journal.push(Draft::new(kind::CHECK, "nuevo")).seq,
+            8,
+            "the sequence continues after the import"
+        );
+        std::fs::remove_dir_all(directory).ok();
     }
 
     #[test]
     fn long_lines_are_clipped() {
-        let path = temp_path("clip");
-        let mut journal = Journal::new(path.clone());
+        let directory = temp_dir("clip");
+        let mut journal = journal_in(&directory);
         let entry = journal.push(Draft::new(kind::OUTPUT, "x".repeat(MAX_TEXT * 2)));
 
         assert!(entry.title.chars().count() <= MAX_TEXT + 1);
         assert!(entry.title.ends_with('…'));
-        let _ = std::fs::remove_file(path);
+        std::fs::remove_dir_all(directory).ok();
     }
 }

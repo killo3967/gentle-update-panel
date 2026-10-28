@@ -42,7 +42,7 @@ impl AppState {
         let pi_health_path = directory.join("pi-health.json");
         let notes_path = directory.join("notes-cache.json");
         let translations_path = directory.join("translations.json");
-        let journal_path = directory.join("journal.json");
+        let journal_path = directory.join(crate::journal::FILE_NAME);
 
         let config = read_json::<Config>(&config_path).unwrap_or_default();
         let mut snapshot = read_json::<Snapshot>(&snapshot_path);

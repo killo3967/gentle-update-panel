@@ -201,7 +201,7 @@ export type JournalKind =
   | "failed"
   | "doctor";
 
-/** One line of the durable journal (`journal.json`), oldest first when listed. */
+/** One line of the durable journal (`journal.ndjson`), oldest first when listed. */
 export interface JournalEntry {
   seq: number;
   at: string;

@@ -9,6 +9,7 @@ use std::time::Duration;
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
 
+use crate::cache::{self, Cached, Limits};
 use crate::domain::{NotesPayload, Release};
 use crate::parsers;
 use crate::{cli, probe};
@@ -20,6 +21,14 @@ const MAX_RELEASES: usize = 8;
 const MAX_BODY_CHARS: usize = 20_000;
 const MAX_HITS: usize = 40;
 const GITHUB: &str = "https://api.github.com";
+
+/// One entry can reach ~92 KB (eight releases of 20 000 chars), so the count and
+/// byte budgets matter more than the age one.
+const CACHE_LIMITS: Limits = Limits {
+    max_entries: 150,
+    max_bytes: 3 * 1024 * 1024,
+    max_age_days: 45,
+};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -36,6 +45,18 @@ struct CacheEntry {
     payload: NotesPayload,
 }
 
+impl Cached for CacheEntry {
+    fn fetched_at(&self) -> &str {
+        &self.fetched_at
+    }
+}
+
+/// `v2|gh:owner/repo|1.0.0|1.1.0`; keys under another version are never read again.
+fn is_current_cache_key(key: &str) -> bool {
+    key.strip_prefix(CACHE_VERSION)
+        .is_some_and(|rest| rest.starts_with('|'))
+}
+
 pub struct NotesService {
     client: reqwest::Client,
     cache_path: PathBuf,
@@ -44,10 +65,16 @@ pub struct NotesService {
 
 impl NotesService {
     pub fn new(cache_path: PathBuf) -> Self {
-        let cache = std::fs::read_to_string(&cache_path)
-            .ok()
-            .and_then(|raw| serde_json::from_str::<HashMap<String, CacheEntry>>(&raw).ok())
-            .unwrap_or_default();
+        let mut cache: HashMap<String, CacheEntry> = cache::load(&cache_path);
+
+        // Clean once at startup: drop keys from an older cache version and put
+        // the file back under its budgets, so it stops carrying dead weight.
+        let before = cache.len();
+        cache.retain(|key, _| is_current_cache_key(key));
+        cache::prune(&mut cache, CACHE_LIMITS, Utc::now());
+        if cache.len() != before {
+            let _ = cache::store(&cache_path, &cache);
+        }
 
         let client = reqwest::Client::builder()
             .user_agent("gentle-update-panel/0.1 (+windows)")
@@ -94,6 +121,8 @@ impl NotesService {
                         payload: payload.clone(),
                     },
                 );
+                // Bound the live map, not just the copy on disk.
+                cache::prune(&mut cache, CACHE_LIMITS, Utc::now());
                 let snapshot = cache.clone();
                 drop(cache);
                 self.persist(&snapshot);
@@ -151,12 +180,7 @@ impl NotesService {
     }
 
     fn persist(&self, cache: &HashMap<String, CacheEntry>) {
-        if let Ok(raw) = serde_json::to_string(cache) {
-            if let Some(parent) = self.cache_path.parent() {
-                let _ = std::fs::create_dir_all(parent);
-            }
-            let _ = std::fs::write(&self.cache_path, raw);
-        }
+        let _ = cache::store(&self.cache_path, cache);
     }
 
     async fn fetch(&self, key: &str, installed: Option<&str>, _latest: Option<&str>) -> NotesPayload {
@@ -402,4 +426,23 @@ pub fn find_pi_changelog() -> Option<PathBuf> {
         .join("pi-coding-agent")
         .join("CHANGELOG.md");
     npm_copy.is_file().then_some(npm_copy)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn keys_under_an_older_cache_version_are_stale() {
+        assert!(is_current_cache_key("v2|gh:o/r|1.0.0|1.1.0"));
+        assert!(
+            !is_current_cache_key("gh:o/r|1.0.0|1.1.0"),
+            "pre-v2 entries can never be read again"
+        );
+        assert!(!is_current_cache_key("v1|gh:o/r|1.0.0|-"));
+        assert!(
+            !is_current_cache_key("v20|gh:o/r|1.0.0|-"),
+            "the separator makes the prefix unambiguous"
+        );
+    }
 }
