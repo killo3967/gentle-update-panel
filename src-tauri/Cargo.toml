@@ -1,0 +1,39 @@
+[package]
+name = "gentle-update-panel"
+version = "0.2.0"
+description = "Update panel for the Gentle AI ecosystem and pi"
+authors = ["Tomas"]
+edition = "2021"
+rust-version = "1.77"
+
+[lib]
+name = "gentle_update_panel_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = ["tray-icon", "image-png"] }
+tauri-plugin-autostart = "2"
+tauri-plugin-notification = "2"
+tauri-plugin-single-instance = "2"
+tauri-plugin-window-state = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "process", "io-util", "sync"] }
+# native-tls uses SChannel on Windows: required for the keyless Google endpoint,
+# which answers 429 to rustls TLS fingerprints.
+reqwest = { version = "0.12", default-features = false, features = ["native-tls", "json", "gzip"] }
+regex = "1"
+semver = "1"
+chrono = { version = "0.4", features = ["serde"] }
+sysinfo = { version = "0.33", default-features = false, features = ["system"] }
+thiserror = "2"
+
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = "s"
+panic = "abort"
+strip = true
