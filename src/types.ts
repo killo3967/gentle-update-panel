@@ -83,6 +83,8 @@ export interface AppStatus {
   snapshot: Snapshot | null;
   doctor: DoctorView | null;
   piHealth: PiHealth | null;
+  journal: JournalEntry[];
+  journalPath: string;
   autostart: boolean;
   version: string;
   appDir: string;
@@ -181,4 +183,31 @@ export interface ApplyStep {
   command: string;
   index: number;
   total: number;
+}
+
+// ---------------------------------------------------------------------------
+// Registro
+// ---------------------------------------------------------------------------
+
+export type JournalKind =
+  | "app"
+  | "check"
+  | "detected"
+  | "preflight"
+  | "apply"
+  | "step"
+  | "output"
+  | "applied"
+  | "failed"
+  | "doctor";
+
+/** One line of the durable journal (`journal.json`), oldest first when listed. */
+export interface JournalEntry {
+  seq: number;
+  at: string;
+  kind: JournalKind;
+  title: string;
+  detail: string | null;
+  itemId: string | null;
+  stream: string | null;
 }

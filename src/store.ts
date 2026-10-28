@@ -7,6 +7,7 @@ import type {
   ApplyStep,
   Config,
   DoctorView,
+  JournalEntry,
   LogEvent,
   PiHealth,
   NotesPayload,
@@ -19,7 +20,13 @@ import type {
 } from "./types";
 import { isActionable } from "./ui/format";
 
-export type View = "overview" | "doctor" | "settings";
+export type View = "overview" | "doctor" | "log" | "settings";
+
+/** Chips of the Registro view. */
+export type JournalFilter = "all" | "detected" | "updates" | "checks" | "problems";
+
+/** Same capacity as the Rust ring buffer; the UI never shows more than this. */
+const JOURNAL_CAPACITY = 800;
 
 export interface Toast {
   kind: "ok" | "error" | "info";
@@ -51,6 +58,12 @@ export interface State {
   log: LogEvent[];
   step: ApplyStep | null;
   outcome: ApplyOutcome | null;
+  journal: JournalEntry[];
+  journalPath: string;
+  journalFilter: JournalFilter;
+  journalQuery: string;
+  /** First click arms the wipe, the second one clears the journal. */
+  journalClearArmed: boolean;
   blockers: Blocker[];
   releaseIndex: Record<string, number>;
   pendingRelease: Record<string, string>;
@@ -87,6 +100,11 @@ export const state: State = {
   log: [],
   step: null,
   outcome: null,
+  journal: [],
+  journalPath: "",
+  journalFilter: "all",
+  journalQuery: "",
+  journalClearArmed: false,
   blockers: [],
   releaseIndex: {},
   pendingRelease: {},
@@ -139,6 +157,88 @@ export function pendingCount(): number {
 }
 
 // ---------------------------------------------------------------------------
+// Registro
+// ---------------------------------------------------------------------------
+
+const JOURNAL_KINDS: Record<JournalFilter, JournalEntry["kind"][] | null> = {
+  all: null,
+  detected: ["detected"],
+  updates: ["apply", "step", "output", "applied", "failed"],
+  checks: ["check", "doctor"],
+  problems: ["failed", "preflight"],
+};
+
+/** Keeps sequence order, drops duplicates and trims to the stored capacity. */
+function mergeJournal(...lists: JournalEntry[][]): JournalEntry[] {
+  const bySeq = new Map<number, JournalEntry>();
+  for (const list of lists) {
+    for (const entry of list) bySeq.set(entry.seq, entry);
+  }
+  return [...bySeq.values()]
+    .sort((left, right) => left.seq - right.seq)
+    .slice(-JOURNAL_CAPACITY);
+}
+
+export function appendJournal(entry: JournalEntry): void {
+  if (state.journal.some((known) => known.seq === entry.seq)) return;
+  setState({ journal: mergeJournal(state.journal, [entry]) });
+}
+
+/** Newest first, already filtered: the view and the copy share one order. */
+export function journalEntries(): JournalEntry[] {
+  const kinds = JOURNAL_KINDS[state.journalFilter];
+  const query = state.journalQuery.trim().toLowerCase();
+
+  return [...state.journal].reverse().filter((entry) => {
+    if (kinds && !kinds.includes(entry.kind)) return false;
+    if (query.length === 0) return true;
+    const haystack = `${entry.title} ${entry.detail ?? ""} ${entry.itemId ?? ""}`;
+    return haystack.toLowerCase().includes(query);
+  });
+}
+
+/** Plain text for the clipboard, oldest first.
+ */
+export function journalText(): string {
+  return state.journal
+    .map((entry) => {
+      const detail = entry.detail ? ` — ${entry.detail}` : "";
+      return `${entry.at}  ${entry.kind}  ${entry.title}${detail}`;
+    })
+    .join("\n");
+}
+
+export function setJournalFilter(filter: JournalFilter): void {
+  if (state.journalFilter === filter) return;
+  setState({ journalFilter: filter, journalClearArmed: false });
+}
+
+export function setJournalQuery(query: string): void {
+  setState({ journalQuery: query.trim(), journalClearArmed: false });
+}
+
+export function resetJournalQuery(): void {
+  setState({ journalQuery: "" });
+}
+
+/** First click arms, second click wipes: no dialog, no silent data loss. */
+export async function clearJournal(): Promise<void> {
+  if (!state.journalClearArmed) {
+    setState({ journalClearArmed: true });
+    return;
+  }
+
+  setState({ journalClearArmed: false });
+  try {
+    await api.clearJournal();
+    setState({ journal: [] });
+    toast("Registro vaciado", "ok");
+  } catch (error) {
+    toast(`No se pudo vaciar el registro: ${String(error)}`, "error");
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Actions
 // ---------------------------------------------------------------------------
 
@@ -157,7 +257,7 @@ export async function init(): Promise<void> {
   if (initialized) return;
   initialized = true;
 
-  const [offSnapshot, offProgress, offLog, offStep, offApplied, offPreselect, offDoctor] =
+  const [offSnapshot, offProgress, offLog, offStep, offApplied, offPreselect, offDoctor, offJournal] =
     await Promise.all([
       events.snapshot((snapshot) => {
         setState({ snapshot });
@@ -174,6 +274,7 @@ export async function init(): Promise<void> {
         setState({ view: "doctor" });
         void runDoctor();
       }),
+      events.journal((entry) => appendJournal(entry)),
     ]);
 
   unlisteners.push(
@@ -184,12 +285,15 @@ export async function init(): Promise<void> {
     offApplied,
     offPreselect,
     offDoctor,
+    offJournal,
   );
 
   try {
     const status: AppStatus = await api.status();
     const view: View =
-      status.config.lastView === "doctor" || status.config.lastView === "settings"
+      status.config.lastView === "doctor" ||
+      status.config.lastView === "log" ||
+      status.config.lastView === "settings"
         ? status.config.lastView
         : "overview";
 
@@ -199,6 +303,8 @@ export async function init(): Promise<void> {
       snapshot: status.snapshot,
       doctor: status.doctor,
       piHealth: status.piHealth,
+      journal: mergeJournal(status.journal ?? [], state.journal),
+      journalPath: status.journalPath,
       autostart: status.autostart,
       version: status.version,
       appDir: status.appDir,
@@ -403,7 +509,7 @@ export function setView(view: View): void {
     setState({ selectedId: null, view });
     return;
   }
-  setState({ view });
+  setState({ view, journalClearArmed: false });
   if (view === "doctor" && !state.doctor) void runDoctor();
   if (view === "doctor" && !state.piHealth) void runPiHealth();
   if (state.config) {

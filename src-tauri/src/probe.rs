@@ -320,18 +320,26 @@ fn package_item(
         upgrade: Upgrade::PiPackage {
             source: source.to_string(),
         },
-        notes_key: meta
-            .repository
-            .as_deref()
-            .and_then(github_slug)
-            .map(|slug| format!("gh:{slug}"))
-            .or_else(|| {
-                npm_name(source)
-                    .map(|npm| format!("npm:{npm}"))
-                    .or(Some("gh:Gentleman-Programming/gentle-shell".to_string()))
-            }),
+        notes_key: notes_key_for(source, meta.repository.as_deref()),
         ignored,
     }
+}
+
+/// Where the release notes come from. Never guess: a wrong repository shows
+/// someone else's notes, which is worse than showing none.
+fn notes_key_for(source: &str, repository: Option<&str>) -> Option<String> {
+    // `pi` pulls a git package from its own remote, so that repo owns the notes.
+    if source.starts_with("git:") {
+        if let Some(slug) = github_slug(source) {
+            return Some(format!("gh:{slug}"));
+        }
+    }
+
+    if let Some(slug) = repository.and_then(github_slug) {
+        return Some(format!("gh:{slug}"));
+    }
+
+    npm_name(source).map(|npm| format!("npm:{npm}"))
 }
 
 /// `npm:@scope/pkg` → `@scope/pkg`, `git:github.com/o/r` → `o/r`.
@@ -562,6 +570,37 @@ mod tests {
         assert_eq!(status_for(None, Some("2.10.1")), Status::Missing);
         assert_eq!(status_for(Some("1.0.0"), None), Status::Unknown);
         assert_eq!(status_for(None, None), Status::Unknown);
+    }
+
+    #[test]
+    fn git_packages_take_notes_from_their_own_remote() {
+        assert_eq!(
+            notes_key_for("git:github.com/penniey/pi-paste-image", None),
+            Some("gh:penniey/pi-paste-image".to_string()),
+            "a git source names its own repo; it must never borrow another one's notes"
+        );
+    }
+
+    #[test]
+    fn npm_packages_prefer_the_declared_repository() {
+        assert_eq!(
+            notes_key_for("npm:gentle-pi", Some("git+https://github.com/Gentleman-Programming/gentle-pi.git")),
+            Some("gh:Gentleman-Programming/gentle-pi".to_string())
+        );
+        assert_eq!(
+            notes_key_for("npm:@scope/pkg", None),
+            Some("npm:@scope/pkg".to_string()),
+            "without metadata the registry page is the honest source"
+        );
+    }
+
+    #[test]
+    fn a_git_package_without_a_known_host_gets_no_notes() {
+        assert_eq!(
+            notes_key_for("git:gitlab.com/owner/repo", None),
+            None,
+            "guessing would show somebody else's releases"
+        );
     }
 
     #[test]

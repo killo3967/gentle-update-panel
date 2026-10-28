@@ -22,6 +22,7 @@ paquetes de pi (npm y git)      <- pi list + package.json + npm registry
 - **Busca en las notas**: un cuadro de búsqueda recorre todas las releases ya descargadas, de cualquier pieza, y salta a la versión concreta.
 - **Comprueba qué hay corriendo antes de actualizar**: detecta pi, engram, gentle-ai, gga y el daemon de CodeGraph sin lanzar PowerShell. Si algo interfiere, abre un diálogo con los procesos, marca en rojo los pasos bloqueados (y no los preselecciona) y deja cancelar. `pi` bloquea sus propias actualizaciones y las de sus paquetes; `engram` solo avisa, porque `gentle-ai` lo cierra con `Stop-Process -Force` antes de reemplazarlo.
 - **Actualiza por selección**: `gentle-ai upgrade <tool>`, `pi update --self` o `pi update --extension <source>`, con la salida en vivo en un cajón de actividad.
+- **Deja un registro de todo**: cada comprobación, cada detección (con versión instalada y disponible), el lote lanzado, el comando de cada pieza, su salida de consola, el resultado (aplicada o fallida) y el doctor posterior. Vive en **Registro**, se guarda en `journal.json` (últimos 800 eventos), sobrevive al reinicio y se puede filtrar por tipo o texto, copiar al portapapeles o vaciar con confirmación.
 - **Traduce las notas**: con dos endpoints gratuitos y sin clave (Google `translate_a/single` y Microsoft `translate_edge/translatetext`). Protege código, rutas y enlaces con marcadores antes de enviar, cachea por versión y cae al segundo motor si el primero falla. Conmutador *Traducir / Ver original* y aviso de "traducido automáticamente".
 - **Ignora piezas**: en Ajustes puedes silenciar gentle-ai, engram, gga, pi o cualquier paquete. Siguen listadas (para poder revertirlo), pero no cuentan como pendientes, no avisan, no se actualizan y ni siquiera se consulta su versión publicada.
 - **Serializa el trabajo**: una comprobación y una actualización nunca corren a la vez (`work_lock`), y el scheduler espera si hay un apply en curso.
@@ -39,6 +40,7 @@ npm run tauri build    # instalador NSIS en src-tauri/target/release/bundle/nsis
 ```
 
 - **Cerrar** (X) oculta la ventana; se sale desde el menú de la bandeja.
+- **Secciones**: Resumen (qué hay y qué se puede actualizar), Doctor (salud del ecosistema y de pi), Registro (qué pasó y cuándo) y Ajustes.
 - **Ajustes**: frecuencia (15 min → 24 h, o Manual), automatismo (Avisar / Confirmar / Automático), notificaciones, doctor automático, arranque minimizado, arranque con Windows y la lista de **piezas ignoradas**.
 - **Arranque con Windows** usa la clave `HKCU\Software\Microsoft\Windows\CurrentVersion\Run` con el argumento `--minimized`.
 
@@ -48,7 +50,7 @@ npm run tauri build    # instalador NSIS en src-tauri/target/release/bundle/nsis
 src/                 UI (TypeScript + Vite, sin frameworks)
   store.ts           estado + acciones, eventos de Tauri
   ui/format.ts       escaping, markdown seguro, iconos, gauge SVG
-  ui/views.ts        rail, resumen, detalle, doctor, ajustes
+  ui/views.ts        rail, resumen, detalle, doctor, registro, ajustes
   ui/shell.ts        titlebar, delegación de eventos, drawer, toasts
 src-tauri/src/
   parsers.rs         parsers puros de salidas CLI + tests
@@ -57,7 +59,8 @@ src-tauri/src/
   notes.rs           notas de versión con caché y reintento
   doctor.rs          gentle-ai doctor
   upgrade.rs         plan y aplicación de actualizaciones
-  service.rs         ciclo de comprobación + notificaciones
+  journal.rs         registro durable de detecciones, pasos y resultados
+  service.rs         ciclo de comprobación + detecciones + notificaciones
   tray.rs            bandeja y visibilidad de la ventana
   scheduler.rs       comprobación periódica
   state.rs           config, snapshot y doctor persistidos
@@ -72,6 +75,7 @@ Todo se guarda en `%APPDATA%\dev.gentle.update-panel\`:
 | `config.json` | frecuencia, automatismo, vista y pieza recordadas, lista de ignoradas |
 | `snapshot.json` | última comprobación (se muestra al instante al abrir) |
 | `doctor.json` | último informe del doctor |
+| `journal.json` | registro de comprobaciones, detecciones y actualizaciones (últimos 800 eventos) |
 | `pi-health.json` | última verificación de instalación de pi y sus paquetes |
 | `notes-cache.json` | notas de versión (TTL 6 h) |
 | `translations.json` | traducciones cacheadas por versión, motor e idioma |

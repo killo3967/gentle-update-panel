@@ -1,9 +1,10 @@
-//! The check itself: collect, persist, reflect in the tray, notify.
+//! The check itself: collect, persist, journal, reflect in the tray, notify.
 
 use tauri::{AppHandle, Emitter, Manager};
 use tauri_plugin_notification::NotificationExt;
 
-use crate::domain::{Automation, ProgressEvent, Snapshot};
+use crate::domain::{Automation, ProgressEvent, Snapshot, Status, UpdateItem};
+use crate::journal::{self, kind, Draft};
 use crate::probe::Prober;
 use crate::state::AppState;
 use crate::{tray, upgrade};
@@ -46,6 +47,7 @@ pub async fn run_check(app: &AppHandle) -> Snapshot {
     let config = app.state::<AppState>().config();
 
     let snapshot = collect(app).await;
+    record_summary(app, &snapshot, previous.as_ref(), "Comprobación completada");
     let fresh = snapshot.doctor_hint(previous.as_ref());
 
     if fresh.is_empty() {
@@ -59,14 +61,88 @@ pub async fn run_check(app: &AppHandle) -> Snapshot {
     if config.automation == Automation::Auto {
         let handle = app.clone();
         let ids = fresh.clone();
+        let before = snapshot.clone();
         tauri::async_runtime::spawn(async move {
-            let outcome = upgrade::apply(&handle, ids).await;
+            let outcome = upgrade::apply(&handle, ids, upgrade::Origin::Auto).await;
             let _ = handle.emit("apply:done", &outcome);
-            let _ = collect(&handle).await;
+            let after = collect(&handle).await;
+            record_summary(
+                &handle,
+                &after,
+                Some(&before),
+                "Comprobación posterior a la actualización",
+            );
         });
     }
 
     snapshot
+}
+
+/// Journals the outcome of a check: one summary line plus one line per new find.
+pub fn record_summary(
+    app: &AppHandle,
+    snapshot: &Snapshot,
+    previous: Option<&Snapshot>,
+    title: &str,
+) {
+    let pending: Vec<&UpdateItem> = snapshot
+        .items
+        .iter()
+        .filter(|item| is_pending(item))
+        .collect();
+
+    let seconds = (snapshot.duration_ms as f64 / 1000.0).round().max(1.0) as u64;
+    let mut detail = format!(
+        "{} piezas · {} pendientes · {seconds} s",
+        snapshot.items.len(),
+        pending.len()
+    );
+    if !snapshot.warnings.is_empty() {
+        detail.push_str(&format!(" · {} avisos", snapshot.warnings.len()));
+    }
+
+    journal::record(app, Draft::new(kind::CHECK, title).detail(detail));
+
+    // A pending row the stored snapshot did not have is news worth telling.
+    for item in pending {
+        let known = previous
+            .map(|previous| {
+                previous
+                    .items
+                    .iter()
+                    .any(|known| known.id == item.id && known.status == item.status)
+            })
+            .unwrap_or(false);
+        if known {
+            continue;
+        }
+
+        let mut draft = Draft::new(kind::DETECTED, detection_title(item)).item(&item.id);
+        if let Some(versions) = detection_detail(item) {
+            draft = draft.detail(versions);
+        }
+        journal::record(app, draft);
+    }
+}
+
+fn is_pending(item: &UpdateItem) -> bool {
+    !item.ignored && matches!(item.status, Status::UpdateAvailable | Status::Missing)
+}
+
+fn detection_title(item: &UpdateItem) -> String {
+    match item.status {
+        Status::Missing => format!("Pendiente de instalar: {}", item.name),
+        _ => format!("Actualización detectada: {}", item.name),
+    }
+}
+
+fn detection_detail(item: &UpdateItem) -> Option<String> {
+    match (&item.installed, &item.latest) {
+        (Some(installed), Some(latest)) => Some(format!("{installed} → {latest}")),
+        (None, Some(latest)) => Some(format!("instalar {latest}")),
+        (Some(installed), None) => Some(format!("instalada {installed}")),
+        _ => None,
+    }
 }
 
 fn notify(app: &AppHandle, snapshot: &Snapshot, fresh: &[String], automation: Automation) {

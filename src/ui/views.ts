@@ -3,20 +3,27 @@
 import {
   actionableItems,
   items,
+  journalEntries,
   pendingCount,
   state,
   translationKey,
   updatesCount,
+  type JournalFilter,
+  type View,
 } from "../store";
 import type {
   DoctorCheckView,
   HealthCheck,
+  JournalEntry,
   PackageHealth,
   Release,
   UpdateItem,
 } from "../types";
 import {
+  clockSeconds,
   clockTime,
+  dayKey,
+  dayLabel,
   delta,
   esc,
   gauge,
@@ -74,6 +81,7 @@ export function renderRail(): string {
     <nav class="nav" role="tablist" aria-label="Secciones">
       ${navItem("overview", "Resumen", icons.overview)}
       ${navItem("doctor", "Doctor", icons.stethoscope)}
+      ${navItem("log", "Registro", icons.journal)}
       ${navItem("settings", "Ajustes", icons.sliders)}
     </nav>
 
@@ -91,7 +99,7 @@ export function renderRail(): string {
   </aside>`;
 }
 
-function navItem(view: "overview" | "doctor" | "settings", label: string, icon: string): string {
+function navItem(view: View, label: string, icon: string): string {
   const active = state.view === view;
   return `<button role="tab" aria-selected="${active}" class="nav-item ${active ? "is-active" : ""}"
       data-action="view" data-view="${view}">${icon}<span>${label}</span>
@@ -137,6 +145,7 @@ function warningsPopover(warnings: string[]): string {
 
 export function renderContent(): string {
   if (state.view === "doctor") return renderDoctor();
+  if (state.view === "log") return renderJournal();
   if (state.view === "settings") return renderSettings();
 
   const selected = state.snapshot?.items.find((item) => item.id === state.selectedId);
@@ -279,7 +288,7 @@ function renderDetail(item: UpdateItem): string {
 
     <div class="actions">
       ${actionable ? `<button class="btn btn-primary" data-action="apply-one" data-id="${esc(item.id)}" ${state.applying ? "disabled" : ""}>${icons.arrowRight}<span>${item.installed ? `Actualizar a ${esc(item.latest ?? "")}` : "Instalar"}</span></button>` : ""}
-      <button class="btn" data-action="load-notes" data-id="${esc(item.id)}">${icons.refresh}<span>Ver notas</span></button>
+      ${item.notesKey ? `<button class="btn" data-action="load-notes" data-id="${esc(item.id)}">${icons.refresh}<span>Ver notas</span></button>` : ""}
       ${notes?.url ? `<button class="btn" data-action="open-url" data-url="${esc(notes.url)}">${icons.external}<span>Abrir en el navegador</span></button>` : ""}
       <button class="btn" data-action="doctor">${icons.stethoscope}<span>Doctor</span></button>
       <button class="btn" data-action="toggle-ignored" data-id="${esc(item.id)}">
@@ -296,6 +305,15 @@ function renderNotes(
   notes: import("../types").NotesPayload | undefined,
   loading: boolean,
 ): string {
+  // No notes key means we do not know where its releases live. Say so instead
+  // of showing another project's changelog.
+  if (!item.notesKey) {
+    return `<section class="card notes-card">
+      <header class="card-head"><h2 class="card-title">Notas de versión</h2></header>
+      <div class="notes-empty"><p>Esta pieza no declara un repositorio del que leer notas de versión.</p></div>
+    </section>`;
+  }
+
   if (loading && !notes) {
     return `<section class="card notes-card">
       <header class="card-head"><h2 class="card-title">Notas de versión</h2></header>
@@ -332,9 +350,9 @@ function renderNotes(
       <h2 class="card-title">Notas de la versión ${esc(release?.version ?? "")}</h2>
       <div class="card-tools">
         ${nav}
-        <button class="btn btn-small ${state.config?.translationEnabled ? "btn-primary" : ""}" data-action="toggle-translation">
+        ${total > 0 ? `<button class="btn btn-small ${state.config?.translationEnabled ? "btn-primary" : ""}" data-action="toggle-translation">
           ${state.config?.translationEnabled ? "Ver original" : "Traducir"}
-        </button>
+        </button>` : ""}
         <button class="icon-btn" data-action="load-notes" data-id="${esc(item.id)}" aria-label="Recargar notas" title="Recargar">${icons.refresh}</button>
       </div>
     </header>
@@ -517,6 +535,148 @@ function packageBlock(pkg: PackageHealth): string {
 }
 
 // ---------------------------------------------------------------------------
+// Registro
+// ---------------------------------------------------------------------------
+
+const JOURNAL_FILTERS: Array<{ value: JournalFilter; label: string }> = [
+  { value: "all", label: "Todo" },
+  { value: "detected", label: "Detecciones" },
+  { value: "updates", label: "Actualizaciones" },
+  { value: "checks", label: "Comprobaciones" },
+  { value: "problems", label: "Problemas" },
+];
+
+interface JournalMeta {
+  icon: string;
+  tone: "ok" | "accent" | "danger" | "faint";
+}
+
+function journalMeta(kind: JournalEntry["kind"]): JournalMeta {
+  switch (kind) {
+    case "detected":
+      return { icon: icons.arrowRight, tone: "accent" };
+    case "preflight":
+      return { icon: icons.alert, tone: "accent" };
+    case "apply":
+      return { icon: icons.refresh, tone: "accent" };
+    case "step":
+      return { icon: icons.terminal, tone: "faint" };
+    case "applied":
+      return { icon: icons.check, tone: "ok" };
+    case "failed":
+      return { icon: icons.alert, tone: "danger" };
+    case "doctor":
+      return { icon: icons.stethoscope, tone: "faint" };
+    case "check":
+      return { icon: icons.refresh, tone: "faint" };
+    default:
+      return { icon: icons.mark, tone: "faint" };
+  }
+}
+
+function renderJournal(): string {
+  const all = state.journal;
+  const entries = journalEntries();
+  const oldest = all[0]?.at ?? null;
+  const newest = all[all.length - 1]?.at ?? null;
+
+  const head = `<header class="view-head">
+    <div class="view-head-copy">
+      <div class="eyebrow">Registro</div>
+      <h1 class="display">${all.length === 0 ? "Sin actividad todavía" : "Qué ha pasado"}</h1>
+      <p class="lead">${all.length === 0 ? "Cada comprobación, cada actualización y cada doctor se anotan aquí y se guardan en disco." : `${all.length} ${plural(all.length, "evento", "eventos")} · desde ${relativeTime(oldest)} · guardado en journal.json`}</p>
+    </div>
+    <div class="journal-stats">
+      <span class="journal-stat"><strong>${all.length}</strong><em>${plural(all.length, "evento", "eventos")}</em></span>
+      <span class="journal-stamp">Último · ${relativeTime(newest)}</span>
+    </div>
+  </header>`;
+
+  const toolbar = `<div class="toolbar journal-toolbar">
+    <button class="btn btn-primary" data-action="check" ${state.checking ? "disabled" : ""}>${icons.refresh}<span>${state.checking ? "Comprobando…" : "Comprobar"}</span></button>
+    <button class="btn" data-action="journal-copy" ${all.length === 0 ? "disabled" : ""}>${icons.copy}<span>Copiar</span></button>
+    <button class="btn ${state.journalClearArmed ? "btn-danger" : "btn-ghost"}" data-action="journal-clear" ${all.length === 0 ? "disabled" : ""}>
+      ${icons.x}<span>${state.journalClearArmed ? "Confirmar vaciado" : "Vaciar"}</span>
+    </button>
+    <span class="toolbar-hint">${state.journalClearArmed ? "Pulsa otra vez para borrar todo el historial" : entries.length === all.length ? "" : `${entries.length} de ${all.length}`}</span>
+  </div>`;
+
+  const controls = `<div class="journal-controls">
+    <div class="segmented journal-filters" role="group" aria-label="Filtrar el registro">
+      ${JOURNAL_FILTERS.map(
+        (filter) => `<button class="segment ${state.journalFilter === filter.value ? "is-active" : ""}"
+          data-action="journal-filter" data-value="${filter.value}"
+          aria-pressed="${state.journalFilter === filter.value}">${filter.label}</button>`,
+      ).join("")}
+    </div>
+    <div class="journal-search">
+      <input class="search-input" type="search" data-role="journal-search"
+        placeholder="Buscar en el registro…"
+        value="${esc(state.journalQuery)}" aria-label="Filtrar el registro"/>
+      <button class="btn btn-small" data-action="journal-search">Filtrar</button>
+      ${state.journalQuery ? `<button class="btn btn-ghost btn-small" data-action="journal-search-clear">Limpiar</button>` : ""}
+    </div>
+  </div>`;
+
+  let body: string;
+  if (all.length === 0) {
+    body = `<div class="empty-state small">${icons.journal}
+      <p class="lead">Todavía no hay nada anotado. La primera comprobación deja aquí su resultado.</p>
+    </div>`;
+  } else if (entries.length === 0) {
+    body = `<div class="empty-state small"><p class="lead">Ningún evento coincide con el filtro.</p></div>`;
+  } else {
+    body = journalDays(entries);
+  }
+
+  return `<section class="content journal-view">${head}${toolbar}${controls}${body}</section>`;
+}
+
+/** Groups newest-first entries into one card per local day. */
+function journalDays(entries: JournalEntry[]): string {
+  const days = new Map<string, JournalEntry[]>();
+  for (const entry of entries) {
+    const key = dayKey(entry.at);
+    const bucket = days.get(key);
+    if (bucket) bucket.push(entry);
+    else days.set(key, [entry]);
+  }
+
+  return [...days.entries()]
+    .map(
+      ([key, list]) => `<section class="card journal-day">
+      <header class="card-head">
+        <h2 class="card-title">${esc(dayLabel(key))}</h2>
+        <span class="card-meta">${list.length} ${plural(list.length, "evento", "eventos")}</span>
+      </header>
+      <div class="journal-rows">${list.map(journalRow).join("")}</div>
+    </section>`,
+    )
+    .join("");
+}
+
+function journalRow(entry: JournalEntry): string {
+  const time = `<span class="jtime mono">${clockSeconds(entry.at)}</span>`;
+
+  // Streamed output keeps its own compact shape: no icon, no emphasis.
+  if (entry.kind === "output") {
+    return `<div class="jrow jrow--output is-output">${time}
+      <div class="jcopy"><span class="jline mono">${esc(entry.title)}</span></div>
+    </div>`;
+  }
+
+  const meta = journalMeta(entry.kind);
+  return `<div class="jrow jrow--${entry.kind}">
+    ${time}
+    <span class="jicon tone--${meta.tone}">${meta.icon}</span>
+    <div class="jcopy">
+      <span class="jtitle">${esc(entry.title)}</span>
+      ${entry.detail ? `<span class="jdetail">${esc(entry.detail)}</span>` : ""}
+    </div>
+  </div>`;
+}
+
+// ---------------------------------------------------------------------------
 // Settings
 // ---------------------------------------------------------------------------
 
@@ -590,6 +750,7 @@ function renderSettings(): string {
       <header class="card-head"><h2 class="card-title">Datos</h2></header>
       <dl class="data-list">
         <div><dt>Configuración</dt><dd class="mono">${esc(state.appDir || "—")}</dd></div>
+        <div><dt>Registro</dt><dd class="mono" title="${esc(state.journalPath)}">${esc(state.journalPath || "—")}</dd></div>
         <div><dt>Versión del panel</dt><dd class="mono">v${esc(state.version || "—")}</dd></div>
         <div><dt>Comprobación</dt><dd class="mono">${state.checking ? "en curso" : relativeTime(state.snapshot?.checkedAt ?? null)}</dd></div>
       </dl>

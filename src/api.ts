@@ -12,6 +12,7 @@ import type {
   PreflightReport,
   NoteHit,
   TranslatedText,
+  JournalEntry,
   Snapshot,
 } from "./types";
 
@@ -30,6 +31,7 @@ export const api = {
   blockers: () => invoke<Blocker[]>("blockers"),
   searchNotes: (query: string) => invoke<NoteHit[]>("search_notes", { query }),
   preflight: (ids: string[]) => invoke<PreflightReport>("apply_preflight", { ids }),
+  clearJournal: () => invoke<void>("clear_journal"),
   translate: (cacheKey: string, text: string, force = false) =>
     invoke<TranslatedText>("translate_release", { cacheKey, text, force }),
 };
@@ -50,4 +52,6 @@ export const events = {
   preselect: (handler: (ids: string[]) => void) =>
     listen<string[]>("preselect", (event) => handler(event.payload)),
   openDoctor: (handler: () => void) => listen("open-doctor", () => handler()),
+  journal: (handler: (entry: JournalEntry) => void) =>
+    listen<JournalEntry>("journal:entry", (event) => handler(event.payload)),
 };

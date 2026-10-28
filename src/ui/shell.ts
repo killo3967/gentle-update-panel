@@ -5,12 +5,14 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import {
   cancelPreflight,
   check,
+  clearJournal,
   clearNotesSearch,
   closeContextMenu,
   confirmPreflight,
   dispose,
   init,
   items,
+  journalText,
   loadNotes,
   moveSelection,
   openContextMenu,
@@ -18,6 +20,7 @@ import {
   openUrl,
   pendingCount,
   requestApply,
+  resetJournalQuery,
   runDoctor,
   runPiHealth,
   saveConfig,
@@ -25,6 +28,8 @@ import {
   selectAll,
   searchNotes,
   selectedIds,
+  setJournalFilter,
+  setJournalQuery,
   setState,
   setView,
   state,
@@ -37,6 +42,7 @@ import {
   togglePreflightStep,
   toggleTranslation,
   toggleSelection,
+  type JournalFilter,
   type View,
 } from "../store";
 import type { Config } from "../types";
@@ -302,6 +308,28 @@ async function handleClick(event: MouseEvent): Promise<void> {
     case "notes-search-clear":
       clearNotesSearch();
       break;
+    case "journal-copy":
+      try {
+        await navigator.clipboard.writeText(journalText());
+        toast("Registro copiado al portapapeles", "ok");
+      } catch {
+        toast("No se pudo copiar el registro", "error");
+      }
+      break;
+    case "journal-clear":
+      await clearJournal();
+      break;
+    case "journal-filter":
+      setJournalFilter((element.dataset.value as JournalFilter) ?? "all");
+      break;
+    case "journal-search": {
+      const input = document.querySelector<HTMLInputElement>('[data-role="journal-search"]');
+      setJournalQuery(input?.value ?? "");
+      break;
+    }
+    case "journal-search-clear":
+      resetJournalQuery();
+      break;
     case "open-hit":
       openHit({
         notesKey: element.dataset.key ?? "",
@@ -469,10 +497,17 @@ function handleKeydown(event: KeyboardEvent): void {
     active instanceof HTMLTextAreaElement ||
     active instanceof HTMLSelectElement;
 
-  if (event.key === "Enter" && active instanceof HTMLInputElement && active.dataset.role === "notes-search") {
-    event.preventDefault();
-    void searchNotes(active.value);
-    return;
+  if (event.key === "Enter" && active instanceof HTMLInputElement) {
+    if (active.dataset.role === "notes-search") {
+      event.preventDefault();
+      void searchNotes(active.value);
+      return;
+    }
+    if (active.dataset.role === "journal-search") {
+      event.preventDefault();
+      setJournalQuery(active.value);
+      return;
+    }
   }
 
   if (event.key === "Escape") {
@@ -482,6 +517,10 @@ function handleKeydown(event: KeyboardEvent): void {
     }
     if (state.preflight) {
       cancelPreflight();
+      return;
+    }
+    if (state.journalClearArmed) {
+      setState({ journalClearArmed: false });
       return;
     }
     if (state.outcome && !state.applying) {

@@ -4,6 +4,7 @@ mod commands;
 mod doctor;
 mod domain;
 mod health;
+mod journal;
 mod notes;
 mod parsers;
 mod probe;
@@ -42,6 +43,17 @@ pub fn run() {
             app.manage(state::AppState::new(&handle));
             tray::build(&handle)?;
 
+            journal::record(
+                &handle,
+                journal::Draft::new(
+                    journal::kind::APP,
+                    format!(
+                        "Panel iniciado · v{}",
+                        app.package_info().version
+                    ),
+                ),
+            );
+
             // Autostart launches with --minimized; a manual launch shows the panel.
             let minimized = std::env::args().any(|arg| arg == "--minimized");
             if !minimized {
@@ -63,6 +75,7 @@ pub fn run() {
             commands::save_config,
             commands::check_now,
             commands::run_doctor,
+            commands::clear_journal,
             commands::doctor_view,
             commands::run_pi_health,
             commands::apply_updates,

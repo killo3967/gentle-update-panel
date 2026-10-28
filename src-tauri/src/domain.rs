@@ -161,6 +161,10 @@ pub struct AppStatus {
     pub snapshot: Option<Snapshot>,
     pub doctor: Option<crate::doctor::DoctorView>,
     pub pi_health: Option<crate::health::PiHealth>,
+    /// What the panel detected and did, oldest first.
+    pub journal: Vec<crate::journal::JournalEntry>,
+    /// Where the journal lives, so the UI can point at the file.
+    pub journal_path: String,
     pub autostart: bool,
     pub version: String,
     pub app_dir: String,

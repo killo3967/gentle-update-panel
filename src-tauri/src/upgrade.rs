@@ -5,16 +5,28 @@ use std::time::Duration;
 use tauri::{AppHandle, Emitter, Manager};
 
 use crate::domain::{ApplyFailure, ApplyOutcome, ApplyStep, LogEvent, Snapshot, Status, Upgrade};
+use crate::journal::{self, kind, Draft};
 use crate::state::AppState;
 use crate::{cli, doctor};
 
 const UPGRADE_TIMEOUT: Duration = Duration::from_secs(15 * 60);
+
+/// Who asked for this batch; the journal says so.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Origin {
+    Manual,
+    Auto,
+}
 
 /// One executable step: the UI-facing description plus the argv to run.
 pub struct PlannedStep {
     pub step: ApplyStep,
     pub program: String,
     pub args: Vec<String>,
+    /// Human name of the piece, without versions.
+    pub name: String,
+    /// `1.0.0 → 1.1.0` or `instalar 1.1.0`, when both versions are known.
+    pub versions: Option<String>,
 }
 
 pub fn plan(snapshot: &Snapshot, ids: &[String]) -> Vec<PlannedStep> {
@@ -49,6 +61,8 @@ pub fn plan(snapshot: &Snapshot, ids: &[String]) -> Vec<PlannedStep> {
                 },
                 program: "gentle-ai".to_string(),
                 args: vec!["upgrade".to_string(), tool.clone()],
+                name: item.name.clone(),
+                versions: Some(versions.clone()),
             },
             Upgrade::PiSelf => PlannedStep {
                 step: ApplyStep {
@@ -58,6 +72,8 @@ pub fn plan(snapshot: &Snapshot, ids: &[String]) -> Vec<PlannedStep> {
                 },
                 program: "pi".to_string(),
                 args: vec!["update".to_string(), "--self".to_string()],
+                name: item.name.clone(),
+                versions: Some(versions.clone()),
             },
             Upgrade::PiPackage { source } => PlannedStep {
                 step: ApplyStep {
@@ -71,6 +87,8 @@ pub fn plan(snapshot: &Snapshot, ids: &[String]) -> Vec<PlannedStep> {
                     "--extension".to_string(),
                     source.clone(),
                 ],
+                name: item.name.clone(),
+                versions: Some(versions.clone()),
             },
             Upgrade::Manual { hint } => PlannedStep {
                 step: ApplyStep {
@@ -80,6 +98,8 @@ pub fn plan(snapshot: &Snapshot, ids: &[String]) -> Vec<PlannedStep> {
                 },
                 program: String::new(),
                 args: Vec::new(),
+                name: item.name.clone(),
+                versions: Some(versions.clone()),
             },
         };
         steps.push(planned);
@@ -90,8 +110,13 @@ pub fn plan(snapshot: &Snapshot, ids: &[String]) -> Vec<PlannedStep> {
 
 /// Runs every step in plan order and then `gentle-ai doctor` when configured.
 /// The caller is responsible for re-checking afterwards.
-pub async fn apply(app: &AppHandle, ids: Vec<String>) -> ApplyOutcome {
+pub async fn apply(app: &AppHandle, ids: Vec<String>, origin: Origin) -> ApplyOutcome {
     let Some(snapshot) = app.state::<AppState>().snapshot() else {
+        journal::record(
+            app,
+            Draft::new(kind::FAILED, "No se pudo actualizar")
+                .detail("no hay una comprobación guardada; comprueba de nuevo"),
+        );
         return ApplyOutcome {
             applied: Vec::new(),
             failed: vec![ApplyFailure {
@@ -109,6 +134,32 @@ pub async fn apply(app: &AppHandle, ids: Vec<String>) -> ApplyOutcome {
     let mut applied = Vec::new();
     let mut failed = Vec::new();
 
+    if steps.is_empty() {
+        journal::record(
+            app,
+            Draft::new(kind::APPLY, "Nada que actualizar")
+                .detail("la selección no contiene piezas actualizables"),
+        );
+        return ApplyOutcome {
+            applied,
+            failed,
+            doctor: None,
+            snapshot: None,
+        };
+    }
+
+    journal::record(
+        app,
+        Draft::new(
+            kind::APPLY,
+            match origin {
+                Origin::Manual => "Actualización manual",
+                Origin::Auto => "Actualización automática",
+            },
+        )
+        .detail(batch_detail(&steps)),
+    );
+
     for (index, planned) in steps.iter().enumerate() {
         let _ = app.emit(
             "apply:step",
@@ -122,6 +173,15 @@ pub async fn apply(app: &AppHandle, ids: Vec<String>) -> ApplyOutcome {
         );
 
         if planned.program.is_empty() {
+            journal::record(
+                app,
+                Draft::new(
+                    kind::FAILED,
+                    format!("{} no se actualiza automáticamente", planned.name),
+                )
+                .detail(&planned.step.label)
+                .item(&planned.step.id),
+            );
             failed.push(ApplyFailure {
                 id: planned.step.id.clone(),
                 label: planned.step.label.clone(),
@@ -139,9 +199,17 @@ pub async fn apply(app: &AppHandle, ids: Vec<String>) -> ApplyOutcome {
                 line: format!("$ {}", planned.step.command),
             },
         );
+        journal::record(
+            app,
+            Draft::new(kind::STEP, format!("$ {}", planned.step.command))
+                .detail(&planned.step.label)
+                .item(&planned.step.id)
+                .stream("command"),
+        );
 
         let app_for_lines = app.clone();
         let id_for_lines = planned.step.id.clone();
+        let mut recorded = 0usize;
         let result = cli::run_streaming(
             &planned.program,
             &planned.args,
@@ -155,6 +223,32 @@ pub async fn apply(app: &AppHandle, ids: Vec<String>) -> ApplyOutcome {
                         line: line.to_string(),
                     },
                 );
+
+                // The drawer keeps the whole stream; the journal keeps a tail so
+                // a chatty installer cannot flush the rest of the history.
+                if recorded < journal::LINES_PER_STEP {
+                    recorded += 1;
+                    journal::record(
+                        &app_for_lines,
+                        Draft::new(kind::OUTPUT, line)
+                            .item(&id_for_lines)
+                            .stream("stdout"),
+                    );
+                } else if recorded == journal::LINES_PER_STEP {
+                    recorded += 1;
+                    journal::record(
+                        &app_for_lines,
+                        Draft::new(
+                            kind::OUTPUT,
+                            format!(
+                                "… salida truncada en el registro ({} primeras líneas)",
+                                journal::LINES_PER_STEP
+                            ),
+                        )
+                        .item(&id_for_lines)
+                        .stream("stdout"),
+                    );
+                }
             },
         )
         .await;
@@ -170,6 +264,13 @@ pub async fn apply(app: &AppHandle, ids: Vec<String>) -> ApplyOutcome {
                         line: format!("{} actualizado", planned.step.label),
                     },
                 );
+                let mut draft =
+                    Draft::new(kind::APPLIED, format!("{} actualizado", planned.name))
+                        .item(&planned.step.id);
+                if let Some(versions) = &planned.versions {
+                    draft = draft.detail(versions);
+                }
+                journal::record(app, draft);
             }
             Ok(output) => {
                 let reason = if output.timed_out {
@@ -205,6 +306,15 @@ pub async fn apply(app: &AppHandle, ids: Vec<String>) -> ApplyOutcome {
                     None => reason,
                 };
 
+                journal::record(
+                    app,
+                    Draft::new(
+                        kind::FAILED,
+                        format!("{} no se pudo actualizar", planned.name),
+                    )
+                    .detail(&reason)
+                    .item(&planned.step.id),
+                );
                 failed.push(ApplyFailure {
                     id: planned.step.id.clone(),
                     label: planned.step.label.clone(),
@@ -212,12 +322,23 @@ pub async fn apply(app: &AppHandle, ids: Vec<String>) -> ApplyOutcome {
                     output: combined,
                 });
             }
-            Err(error) => failed.push(ApplyFailure {
-                id: planned.step.id.clone(),
-                label: planned.step.label.clone(),
-                reason: error,
-                output: String::new(),
-            }),
+            Err(error) => {
+                journal::record(
+                    app,
+                    Draft::new(
+                        kind::FAILED,
+                        format!("{} no se pudo actualizar", planned.name),
+                    )
+                    .detail(&error)
+                    .item(&planned.step.id),
+                );
+                failed.push(ApplyFailure {
+                    id: planned.step.id.clone(),
+                    label: planned.step.label.clone(),
+                    reason: error,
+                    output: String::new(),
+                });
+            }
         }
     }
 
@@ -231,7 +352,16 @@ pub async fn apply(app: &AppHandle, ids: Vec<String>) -> ApplyOutcome {
                 line: "$ gentle-ai doctor".to_string(),
             },
         );
-        Some(doctor::run_view(app).await)
+        let report = doctor::run_view(app).await;
+        journal::record(
+            app,
+            Draft::new(
+                kind::DOCTOR,
+                format!("Doctor tras actualizar: {}", doctor::status_label(&report.status)),
+            )
+            .detail(doctor::summary_line(&report)),
+        );
+        Some(report)
     } else {
         None
     };
@@ -242,6 +372,21 @@ pub async fn apply(app: &AppHandle, ids: Vec<String>) -> ApplyOutcome {
         doctor: doctor_report,
         snapshot: None,
     }
+}
+
+/// `3 piezas · gentle-pi, pi, npm:foo` — long batches stay readable.
+fn batch_detail(steps: &[PlannedStep]) -> String {
+    let names: Vec<&str> = steps.iter().map(|step| step.name.as_str()).take(6).collect();
+    let mut detail = format!(
+        "{} {} · {}",
+        steps.len(),
+        if steps.len() == 1 { "pieza" } else { "piezas" },
+        names.join(", ")
+    );
+    if steps.len() > names.len() {
+        detail.push_str("…");
+    }
+    detail
 }
 
 fn first_lines(text: &str, count: usize) -> String {

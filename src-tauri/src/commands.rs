@@ -7,6 +7,7 @@ use tauri::{AppHandle, Emitter, Manager};
 use tauri_plugin_autostart::ManagerExt;
 
 use crate::domain::{ApplyOutcome, AppStatus, Config, NotesPayload, Snapshot};
+use crate::journal::{self, kind, Draft};
 use crate::state::AppState;
 use crate::blockers::{self, Blocker, Impact, PreflightReport, PreflightStep};
 use crate::doctor::DoctorView;
@@ -36,6 +37,8 @@ pub fn app_status(app: AppHandle) -> AppStatus {
             doctor::view(&report, &state.config(), state.snapshot().as_ref())
         }),
         pi_health: state.pi_health(),
+        journal: journal::list(&app),
+        journal_path: journal::path_string(&app),
         autostart: app.autolaunch().is_enabled().unwrap_or(false),
         version: app.package_info().version.to_string(),
         app_dir: app
@@ -91,7 +94,22 @@ pub async fn check_now(app: AppHandle) -> Snapshot {
 
 #[tauri::command]
 pub async fn run_doctor(app: AppHandle) -> DoctorView {
-    doctor::run_view(&app).await
+    let view = doctor::run_view(&app).await;
+    journal::record(
+        &app,
+        Draft::new(
+            kind::DOCTOR,
+            format!("Doctor manual: {}", doctor::status_label(&view.status)),
+        )
+        .detail(doctor::summary_line(&view)),
+    );
+    view
+}
+
+/// Empties the journal; the file stays so the next entry can be appended.
+#[tauri::command]
+pub fn clear_journal(app: AppHandle) {
+    journal::clear(&app);
 }
 
 /// Recomputes the filtered view from the stored report, without running the CLI.
@@ -124,6 +142,30 @@ pub fn blockers() -> Vec<Blocker> {
 pub fn apply_preflight(app: AppHandle, ids: Vec<String>) -> PreflightReport {
     let state = app.state::<AppState>();
     let running = blockers::detect();
+    if !running.is_empty() {
+        let detail = running
+            .iter()
+            .map(|blocker| format!("{} ({})", blocker.name, blocker.kind))
+            .collect::<Vec<_>>()
+            .join(", ");
+        journal::record(
+            &app,
+            Draft::new(
+                kind::PREFLIGHT,
+                format!(
+                    "{} {} en marcha antes de actualizar",
+                    running.len(),
+                    if running.len() == 1 {
+                        "proceso"
+                    } else {
+                        "procesos"
+                    }
+                ),
+            )
+            .detail(detail),
+        );
+    }
+
     let Some(snapshot) = state.snapshot() else {
         return PreflightReport {
             blockers: running,
@@ -170,8 +212,15 @@ pub async fn apply_updates(app: AppHandle, ids: Vec<String>) -> Result<ApplyOutc
     let lock = app.state::<AppState>().work_lock.clone();
     let _work = lock.lock().await;
 
-    let outcome = upgrade::apply(&app, ids).await;
+    let previous = app.state::<AppState>().snapshot();
+    let outcome = upgrade::apply(&app, ids, upgrade::Origin::Manual).await;
     let snapshot = service::collect(&app).await;
+    service::record_summary(
+        &app,
+        &snapshot,
+        previous.as_ref(),
+        "Comprobación posterior a la actualización",
+    );
 
     Ok(ApplyOutcome {
         snapshot: Some(snapshot),

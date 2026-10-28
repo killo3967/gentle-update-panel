@@ -107,6 +107,47 @@ pub async fn run_view(app: &AppHandle) -> DoctorView {
     view(&report, &state.config(), state.snapshot().as_ref())
 }
 
+/// Spanish label for a doctor status, shared by the journal and the UI copy.
+pub fn status_label(status: &str) -> &'static str {
+    match status.to_lowercase().as_str() {
+        "ok" | "healthy" => "correcto",
+        "degraded" | "warn" => "degradado",
+        "failed" | "fail" => "con fallos",
+        "timeout" => "sin respuesta",
+        _ => "sin datos",
+    }
+}
+
+/// One line worth keeping in the journal: how many checks ran and what failed.
+pub fn summary_line(view: &DoctorView) -> String {
+    let active = view.checks.iter().filter(|check| !check.ignored).count();
+    let problems: Vec<&DoctorCheckView> = view
+        .checks
+        .iter()
+        .filter(|check| !check.ignored && check.marker != "ok")
+        .collect();
+
+    let mut parts = vec![format!(
+        "{active} {}",
+        if active == 1 {
+            "comprobación"
+        } else {
+            "comprobaciones"
+        }
+    )];
+    if !problems.is_empty() {
+        parts.push(format!("{} con problemas", problems.len()));
+        if let Some(first) = problems.first() {
+            parts.push(format!("{}: {}", first.id, first.message));
+        }
+    }
+    if view.ignored_count > 0 {
+        parts.push(format!("{} silenciadas", view.ignored_count));
+    }
+
+    parts.join(" · ")
+}
+
 pub async fn run() -> DoctorReport {
     let args = vec!["doctor".to_string()];
     match cli::run("gentle-ai", &args, DOCTOR_TIMEOUT).await {

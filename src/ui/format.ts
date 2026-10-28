@@ -40,6 +40,44 @@ export function clockTime(iso: string | null): string {
   return date.toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" });
 }
 
+export function clockSeconds(iso: string | null): string {
+  if (!iso) return "—";
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return "—";
+  return date.toLocaleTimeString("es-ES", {
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  });
+}
+
+/** Local `YYYY-MM-DD`, used to group the journal by day. */
+export function dayKey(iso: string): string {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return iso.slice(0, 10);
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${date.getFullYear()}-${month}-${day}`;
+}
+
+/** `Hoy`, `Ayer` or the long date. */
+export function dayLabel(key: string): string {
+  const today = new Date();
+  const todayKey = dayKey(today.toISOString());
+  const yesterday = new Date(today.getTime() - 86_400_000);
+  if (key === todayKey) return "Hoy";
+  if (key === dayKey(yesterday.toISOString())) return "Ayer";
+
+  const date = new Date(`${key}T12:00:00`);
+  if (Number.isNaN(date.getTime())) return key;
+  const label = date.toLocaleDateString("es-ES", {
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+  });
+  return label.charAt(0).toUpperCase() + label.slice(1);
+}
+
 export const ACTIONABLE: Status[] = ["updateAvailable", "missing"];
 
 export function isActionable(status: Status): boolean {
@@ -239,6 +277,8 @@ export const icons = {
   refresh: svg('<path d="M20 11a8 8 0 1 0-2.3 6.3"/><path d="M20 4v7h-7"/>'),
   overview: svg('<rect x="3" y="3" width="7" height="7" rx="1.4"/><rect x="14" y="3" width="7" height="7" rx="1.4"/><rect x="3" y="14" width="7" height="7" rx="1.4"/><rect x="14" y="14" width="7" height="7" rx="1.4"/>'),
   stethoscope: svg('<path d="M5 3v6a4 4 0 0 0 8 0V3"/><path d="M9 13v3a5 5 0 0 0 10 0v-2"/><circle cx="19" cy="11" r="2"/>'),
+  journal: svg('<path d="M9 6h11"/><path d="M9 12h11"/><path d="M9 18h11"/><circle cx="4.5" cy="6" r="1"/><circle cx="4.5" cy="12" r="1"/><circle cx="4.5" cy="18" r="1"/>'),
+  terminal: svg('<path d="m4 6 5 6-5 6"/><path d="M12 18h8"/>', 14),
   sliders: svg('<path d="M4 6h10"/><path d="M18 6h2"/><circle cx="16" cy="6" r="2"/><path d="M4 12h4"/><path d="M12 12h8"/><circle cx="10" cy="12" r="2"/><path d="M4 18h12"/><path d="M20 18h0"/><circle cx="18" cy="18" r="2"/>'),
   external: svg('<path d="M14 4h6v6"/><path d="M20 4 11 13"/><path d="M18 14v4a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4"/>', 14),
   arrowRight: svg('<path d="M5 12h14"/><path d="m13 6 6 6-6 6"/>', 14),

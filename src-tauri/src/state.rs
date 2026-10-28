@@ -8,6 +8,7 @@ use tauri::{AppHandle, Manager};
 
 use crate::domain::{Config, DoctorReport, Snapshot};
 use crate::health::PiHealth;
+use crate::journal::Journal;
 use crate::translate::TranslationService;
 use crate::notes::NotesService;
 
@@ -16,6 +17,7 @@ pub struct AppState {
     pub snapshot: Mutex<Option<Snapshot>>,
     pub doctor: Mutex<Option<DoctorReport>>,
     pub pi_health: Mutex<Option<PiHealth>>,
+    pub journal: Mutex<Journal>,
     pub notes: Arc<NotesService>,
     pub translations: Arc<TranslationService>,
     pub config_path: PathBuf,
@@ -40,6 +42,7 @@ impl AppState {
         let pi_health_path = directory.join("pi-health.json");
         let notes_path = directory.join("notes-cache.json");
         let translations_path = directory.join("translations.json");
+        let journal_path = directory.join("journal.json");
 
         let config = read_json::<Config>(&config_path).unwrap_or_default();
         let mut snapshot = read_json::<Snapshot>(&snapshot_path);
@@ -55,6 +58,7 @@ impl AppState {
             snapshot: Mutex::new(snapshot),
             doctor: Mutex::new(doctor),
             pi_health: Mutex::new(pi_health),
+            journal: Mutex::new(Journal::new(journal_path)),
             notes: Arc::new(NotesService::new(notes_path)),
             translations: Arc::new(TranslationService::new(translations_path)),
             config_path,
@@ -111,12 +115,12 @@ impl AppState {
     }
 }
 
-fn read_json<T: serde::de::DeserializeOwned>(path: &PathBuf) -> Option<T> {
+pub(crate) fn read_json<T: serde::de::DeserializeOwned>(path: &PathBuf) -> Option<T> {
     let raw = std::fs::read_to_string(path).ok()?;
     serde_json::from_str(&raw).ok()
 }
 
-fn write_json<T: serde::Serialize>(path: &PathBuf, value: &T) -> std::io::Result<()> {
+pub(crate) fn write_json<T: serde::Serialize>(path: &PathBuf, value: &T) -> std::io::Result<()> {
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;
     }
