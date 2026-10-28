@@ -8,6 +8,13 @@ pi                              <- pi --version + npm
 paquetes de pi (npm y git)      <- pi list + package.json + npm registry
 ```
 
+<p align="center">
+  <img src="docs/screenshot.png" width="900"
+       alt="Gentle Update Panel: notas de la versión 4.5.1 de gentle-pi, traducidas al español, con navegación entre versiones y acciones por pieza">
+</p>
+
+<p align="center"><em>Notas de versión traducidas, navegación entre versiones y acciones por pieza.</em></p>
+
 ## Qué hace
 
 - **Comprueba** el ecosistema (`gentle-ai update`), la versión de `pi` y cada paquete declarado en `pi list`.
