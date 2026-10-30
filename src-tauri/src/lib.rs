@@ -6,6 +6,7 @@ mod doctor;
 mod domain;
 mod health;
 mod journal;
+mod locale;
 mod notes;
 mod parsers;
 mod probe;

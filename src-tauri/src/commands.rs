@@ -265,8 +265,9 @@ pub async fn translate_release(
         .translate(
             &cache_key,
             &text,
-            &config.translation_engine,
-            &config.translation_lang,
+            // Google first, Microsoft as the fallback: there is no engine choice.
+            "auto",
+            &crate::locale::target_language(),
             force,
         )
         .await

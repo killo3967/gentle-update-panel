@@ -371,14 +371,6 @@ async function handleClick(event: MouseEvent): Promise<void> {
     case "toggle-translation":
       await toggleTranslation();
       break;
-    case "set-translation-engine":
-      await saveConfig({
-        translationEngine: (element.dataset.value as Config["translationEngine"]) ?? "auto",
-      });
-      break;
-    case "set-translation-lang":
-      await saveConfig({ translationLang: element.dataset.value ?? "es" });
-      break;
     case "load-notes": {
       const item = items().find((candidate) => candidate.id === id);
       if (item) await loadNotes(item, true);

@@ -128,10 +128,6 @@ pub struct Config {
     pub ignore_missing_tools: bool,
     /// Translate release notes on demand.
     pub translation_enabled: bool,
-    /// `auto` tries Google first and falls back to Microsoft.
-    pub translation_engine: String,
-    /// ISO target language, e.g. `es`.
-    pub translation_lang: String,
 }
 
 impl Default for Config {
@@ -148,8 +144,6 @@ impl Default for Config {
             doctor_ignored: Vec::new(),
             ignore_missing_tools: false,
             translation_enabled: true,
-            translation_engine: "auto".to_string(),
-            translation_lang: "es".to_string(),
         }
     }
 }

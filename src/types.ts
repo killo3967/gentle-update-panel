@@ -3,7 +3,6 @@
 export type ItemKind = "ecosystem" | "pi" | "piPackage";
 export type Status = "upToDate" | "updateAvailable" | "missing" | "unknown";
 export type Automation = "notify" | "confirm" | "auto";
-export type TranslationEngine = "auto" | "google" | "microsoft";
 
 export type Upgrade =
   | { type: "gentleAiTool"; tool: string }
@@ -44,8 +43,6 @@ export interface Config {
   doctorIgnored: string[];
   ignoreMissingTools: boolean;
   translationEnabled: boolean;
-  translationEngine: TranslationEngine;
-  translationLang: string;
 }
 
 export interface TranslatedText {

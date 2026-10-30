@@ -873,26 +873,11 @@ function renderTranslationCard(): string {
   const config = state.config;
   if (!config) return "";
 
-  const engines: Array<{ value: "auto" | "google" | "microsoft"; label: string }> = [
-    { value: "auto", label: "Automático" },
-    { value: "google", label: "Google" },
-    { value: "microsoft", label: "Microsoft" },
-  ];
-  const languages = [
-    { value: "es", label: "Español" },
-    { value: "en", label: "Inglés" },
-    { value: "fr", label: "Francés" },
-    { value: "de", label: "Alemán" },
-    { value: "pt", label: "Portugués" },
-    { value: "it", label: "Italiano" },
-  ];
-
   return `<section class="card">
     <header class="card-head">
       <h2 class="card-title">Traducción de notas</h2>
       <span class="card-meta">${config.translationEnabled ? "activada" : "desactivada"}</span>
     </header>
-    <p class="card-help">Traduce las notas de versión bajo demanda y las guarda en caché. El código, las rutas y los enlaces se protegen antes de enviarlos. Son endpoints gratuitos no oficiales: si Google falla, se usa Microsoft.</p>
     <div class="switches">
       <div class="switch-row">
         <div class="switch-copy">
@@ -903,16 +888,6 @@ function renderTranslationCard(): string {
           aria-checked="${config.translationEnabled}" aria-label="Traducir las notas"
           data-action="toggle-config" data-key="translationEnabled"><span class="knob"></span></button>
       </div>
-    </div>
-    <div class="segmented" role="group" aria-label="Motor de traducción">
-      ${engines.map((engine) => `<button class="segment ${config.translationEngine === engine.value ? "is-active" : ""}"
-        data-action="set-translation-engine" data-value="${engine.value}"
-        aria-pressed="${config.translationEngine === engine.value}">${engine.label}</button>`).join("")}
-    </div>
-    <div class="segmented" role="group" aria-label="Idioma de destino">
-      ${languages.map((language) => `<button class="segment ${config.translationLang === language.value ? "is-active" : ""}"
-        data-action="set-translation-lang" data-value="${language.value}"
-        aria-pressed="${config.translationLang === language.value}">${language.label}</button>`).join("")}
     </div>
   </section>`;
 }
