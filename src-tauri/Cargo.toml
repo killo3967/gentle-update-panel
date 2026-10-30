@@ -1,6 +1,6 @@
 [package]
 name = "gentle-update-panel"
-version = "0.6.0"
+version = "0.7.0"
 description = "Update panel for the Gentle AI ecosystem and pi"
 authors = ["Tomas"]
 edition = "2021"
