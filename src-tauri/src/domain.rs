@@ -164,6 +164,8 @@ pub struct AppStatus {
     pub autostart: bool,
     pub version: String,
     pub app_dir: String,
+    /// Language the system asked for, e.g. `es`; the UI picks its dictionary from it.
+    pub locale: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

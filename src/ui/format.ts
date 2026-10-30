@@ -1,6 +1,7 @@
 // Formatting, escaping, icons and the gauge — everything the views share.
 
-import type { Status } from "../types";
+import type { JournalEntry, Status } from "../types";
+import { localeTag, t } from "../i18n";
 
 export const esc = (value: string): string =>
   value.replace(/[&<>"']/g, (character) => {
@@ -19,32 +20,35 @@ export const esc = (value: string): string =>
   });
 
 export function relativeTime(iso: string | null): string {
-  if (!iso) return "nunca";
+  if (!iso) return t("time.never");
   const stamp = Date.parse(iso);
-  if (Number.isNaN(stamp)) return "nunca";
+  if (Number.isNaN(stamp)) return t("time.never");
 
   const seconds = Math.round((Date.now() - stamp) / 1000);
-  if (seconds < 45) return "ahora mismo";
+  if (seconds < 45) return t("time.now");
+
+  // Intl gives "hace 5 min" / "5 min ago" / "vor 5 Min." without a dictionary.
+  const relative = new Intl.RelativeTimeFormat(localeTag(), { numeric: "auto", style: "short" });
   const minutes = Math.round(seconds / 60);
-  if (minutes < 60) return `hace ${minutes} min`;
+  if (minutes < 60) return relative.format(-minutes, "minute");
   const hours = Math.round(minutes / 60);
-  if (hours < 24) return `hace ${hours} h`;
+  if (hours < 24) return relative.format(-hours, "hour");
   const days = Math.round(hours / 24);
-  return `hace ${days} d`;
+  return relative.format(-days, "day");
 }
 
 export function clockTime(iso: string | null): string {
   if (!iso) return "—";
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) return "—";
-  return date.toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" });
+  return date.toLocaleTimeString(localeTag(), { hour: "2-digit", minute: "2-digit" });
 }
 
 export function clockSeconds(iso: string | null): string {
   if (!iso) return "—";
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) return "—";
-  return date.toLocaleTimeString("es-ES", {
+  return date.toLocaleTimeString(localeTag(), {
     hour: "2-digit",
     minute: "2-digit",
     second: "2-digit",
@@ -60,17 +64,17 @@ export function dayKey(iso: string): string {
   return `${date.getFullYear()}-${month}-${day}`;
 }
 
-/** `Hoy`, `Ayer` or the long date. */
+/** `Today`, `Yesterday` or the long date, in the active language. */
 export function dayLabel(key: string): string {
   const today = new Date();
   const todayKey = dayKey(today.toISOString());
   const yesterday = new Date(today.getTime() - 86_400_000);
-  if (key === todayKey) return "Hoy";
-  if (key === dayKey(yesterday.toISOString())) return "Ayer";
+  if (key === todayKey) return t("time.today");
+  if (key === dayKey(yesterday.toISOString())) return t("time.yesterday");
 
   const date = new Date(`${key}T12:00:00`);
   if (Number.isNaN(date.getTime())) return key;
-  const label = date.toLocaleDateString("es-ES", {
+  const label = date.toLocaleDateString(localeTag(), {
     weekday: "long",
     day: "numeric",
     month: "long",
@@ -92,13 +96,13 @@ export interface StatusMeta {
 export function statusMeta(status: Status): StatusMeta {
   switch (status) {
     case "updateAvailable":
-      return { label: "Actualizable", tone: "accent" };
+      return { label: t("status.updateAvailable"), tone: "accent" };
     case "missing":
-      return { label: "Sin instalar", tone: "danger" };
+      return { label: t("status.missing"), tone: "danger" };
     case "upToDate":
-      return { label: "Al día", tone: "ok" };
+      return { label: t("status.upToDate"), tone: "ok" };
     default:
-      return { label: "Sin datos", tone: "faint" };
+      return { label: t("status.unknown"), tone: "faint" };
   }
 }
 
@@ -106,22 +110,22 @@ export function doctorMeta(status: string): { label: string; tone: string } {
   switch (status.toLowerCase()) {
     case "ok":
     case "healthy":
-      return { label: "Correcto", tone: "ok" };
+      return { label: t("doctor.ok"), tone: "ok" };
     case "degraded":
     case "warn":
-      return { label: "Degradado", tone: "accent" };
+      return { label: t("doctor.degraded"), tone: "accent" };
     case "failed":
     case "fail":
-      return { label: "Con fallos", tone: "danger" };
+      return { label: t("doctor.failed"), tone: "danger" };
     case "timeout":
-      return { label: "Sin respuesta", tone: "danger" };
+      return { label: t("doctor.timeout"), tone: "danger" };
     default:
-      return { label: "Sin datos", tone: "faint" };
+      return { label: t("status.unknown"), tone: "faint" };
   }
 }
 
 export function sourceLabel(source: string | null): string {
-  if (!source) return "binario gestionado por gentle-ai";
+  if (!source) return t("source.managed");
   return source.replace(/^npm:/, "").replace(/^git:/, "");
 }
 
@@ -130,6 +134,25 @@ export function delta(installed: string | null, latest: string | null): string {
   if (installed && latest && installed !== latest) return `${installed}→${latest}`;
   if (installed) return installed;
   return "—";
+}
+
+// ---------------------------------------------------------------------------
+// Registro
+// ---------------------------------------------------------------------------
+
+/** Title of a journal entry in the active language, or the frozen text.
+ *
+ * Entries written by an older build have no key: they show what was stored.
+ */
+export function journalTitle(entry: JournalEntry): string {
+  if (!entry.titleKey) return entry.title;
+  return t(entry.titleKey, entry.titleArgs ?? undefined);
+}
+
+/** Same for the detail line; `null` when the entry has none. */
+export function journalDetail(entry: JournalEntry): string | null {
+  if (entry.detailKey) return t(entry.detailKey, entry.detailArgs ?? undefined);
+  return entry.detail;
 }
 
 // ---------------------------------------------------------------------------
@@ -362,6 +385,3 @@ export function counterTone(count: number): string {
   return "accent";
 }
 
-export function plural(count: number, one: string, many: string): string {
-  return count === 1 ? one : many;
-}

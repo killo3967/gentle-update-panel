@@ -7,7 +7,7 @@
 //! the `journal:entry` events, so a check that runs while the panel is closed is
 //! not lost.
 
-use std::collections::VecDeque;
+use std::collections::{BTreeMap, VecDeque};
 use std::io::Write;
 use std::path::{Path, PathBuf};
 
@@ -68,6 +68,17 @@ pub struct JournalEntry {
     pub item_id: Option<String>,
     /// `stdout` for streamed lines, `command` for the invoked command.
     pub stream: Option<String>,
+    /// Translation key for the title; `title` stays as the frozen fallback.
+    #[serde(default)]
+    pub title_key: Option<String>,
+    /// Values for the `{name}` placeholders in `title_key`.
+    #[serde(default)]
+    pub title_args: Option<BTreeMap<String, String>>,
+    /// Same, for the detail line: only the ones the panel composes itself.
+    #[serde(default)]
+    pub detail_key: Option<String>,
+    #[serde(default)]
+    pub detail_args: Option<BTreeMap<String, String>>,
 }
 
 /// Shape of the old `journal.json`, kept only to import it.
@@ -82,6 +93,10 @@ struct LegacyFile {
 pub struct Draft {
     kind: String,
     title: String,
+    key: Option<String>,
+    args: BTreeMap<String, String>,
+    detail_key: Option<String>,
+    detail_args: BTreeMap<String, String>,
     detail: Option<String>,
     item_id: Option<String>,
     stream: Option<String>,
@@ -92,10 +107,38 @@ impl Draft {
         Self {
             kind: kind.to_string(),
             title: title.into(),
+            key: None,
+            args: BTreeMap::new(),
+            detail_key: None,
+            detail_args: BTreeMap::new(),
             detail: None,
             item_id: None,
             stream: None,
         }
+    }
+
+    /// Marks the title as translatable in the webview.
+    pub fn key(mut self, key: &str) -> Self {
+        self.key = Some(key.to_string());
+        self
+    }
+
+    /// A value for a `{name}` placeholder of the key.
+    pub fn arg(mut self, name: &str, value: impl Into<String>) -> Self {
+        self.args.insert(name.to_string(), value.into());
+        self
+    }
+
+    /// Marks the detail line as translatable in the webview.
+    pub fn detail_key(mut self, key: &str) -> Self {
+        self.detail_key = Some(key.to_string());
+        self
+    }
+
+    /// A value for a `{name}` placeholder of the detail key.
+    pub fn detail_arg(mut self, name: &str, value: impl Into<String>) -> Self {
+        self.detail_args.insert(name.to_string(), value.into());
+        self
     }
 
     pub fn detail(mut self, detail: impl Into<String>) -> Self {
@@ -178,6 +221,18 @@ impl Journal {
             detail: draft.detail,
             item_id: draft.item_id,
             stream: draft.stream,
+            title_key: draft.key,
+            title_args: if draft.args.is_empty() {
+                None
+            } else {
+                Some(draft.args)
+            },
+            detail_key: draft.detail_key,
+            detail_args: if draft.detail_args.is_empty() {
+                None
+            } else {
+                Some(draft.detail_args)
+            },
         };
 
         if let Ok(line) = serde_json::to_string(&entry) {

@@ -11,11 +11,11 @@ const IDLE: &[u8] = include_bytes!("../icons/tray-idle.png");
 const ALERT: &[u8] = include_bytes!("../icons/tray-alert.png");
 
 pub fn build(app: &AppHandle) -> tauri::Result<()> {
-    let open = MenuItem::with_id(app, "open", "Abrir panel", true, None::<&str>)?;
-    let check = MenuItem::with_id(app, "check", "Comprobar ahora", true, None::<&str>)?;
-    let doctor = MenuItem::with_id(app, "doctor", "Ejecutar doctor", true, None::<&str>)?;
-    let panel = MenuItem::with_id(app, "panel-update", "Actualizar el panel", false, None::<&str>)?;
-    let quit = MenuItem::with_id(app, "quit", "Salir", true, None::<&str>)?;
+    let open = MenuItem::with_id(app, "open", crate::i18n::t("tray.open"), true, None::<&str>)?;
+    let check = MenuItem::with_id(app, "check", crate::i18n::t("tray.check"), true, None::<&str>)?;
+    let doctor = MenuItem::with_id(app, "doctor", crate::i18n::t("tray.doctor"), true, None::<&str>)?;
+    let panel = MenuItem::with_id(app, "panel-update", crate::i18n::t("tray.updatePanel"), false, None::<&str>)?;
+    let quit = MenuItem::with_id(app, "quit", crate::i18n::t("tray.quit"), true, None::<&str>)?;
     let separator = PredefinedMenuItem::separator(app)?;
     let menu = Menu::with_items(
         app,
@@ -88,8 +88,10 @@ pub fn reflect(app: &AppHandle) {
         if let Some(item) = slot.as_ref() {
             let _ = item.set_enabled(panel.is_some());
             let label = match &panel {
-                Some(update) => format!("Actualizar el panel a {}", update.latest),
-                None => "Actualizar el panel".to_string(),
+                Some(update) => {
+                    crate::i18n::t_args("tray.updatePanelTo", &[("version", &update.latest)])
+                }
+                None => crate::i18n::t("tray.updatePanel").to_string(),
             };
             let _ = item.set_text(label);
         }
@@ -110,13 +112,19 @@ pub fn reflect(app: &AppHandle) {
 
     let mut parts: Vec<String> = Vec::new();
     if pending > 0 {
-        parts.push(format!("{pending} pendiente(s)"));
+        parts.push(crate::i18n::t_args(
+            "tray.tooltip.pending",
+            &[("count", &pending.to_string())],
+        ));
     }
     if let Some(update) = &panel {
-        parts.push(format!("panel {} disponible", update.latest));
+        parts.push(crate::i18n::t_args(
+            "tray.tooltip.panel",
+            &[("version", &update.latest)],
+        ));
     }
     let tooltip = if parts.is_empty() {
-        "Gentle Update Panel · al día".to_string()
+        crate::i18n::t("tray.tooltip.idle").to_string()
     } else {
         format!("Gentle Update Panel · {}", parts.join(" · "))
     };

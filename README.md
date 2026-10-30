@@ -17,6 +17,8 @@ paquetes de pi (npm y git)      <- pi list + package.json + npm registry
 
 ## Qué hace
 
+- **Habla el idioma de Windows**: la interfaz, la bandeja, las notificaciones y los nuevos asientos del Registro se muestran en español, inglés, portugués, francés, italiano o alemán, según el idioma del sistema. Si no está entre ellos, cae a español. Los diccionarios viven en `src/i18n/` y la paridad de claves la comprueba el compilador: cada diccionario se tipa contra las claves del español, así que una traducción incompleta no compila.
+
 - **Comprueba** el ecosistema (`gentle-ai update`), la versión de `pi` y cada paquete declarado en `pi list`.
 - **Muestra el "qué trae de nuevo"**: una versión a la vez, con flechas `←` `→` para recorrer el historial (hasta 8 releases), enlaces clicables que abren el navegador (incluidos los autoenlaces de GitHub a `#123` y a commits) y menú contextual propio sobre cada enlace.
 - **Busca en las notas**: un cuadro de búsqueda recorre todas las releases ya descargadas, de cualquier pieza, y salta a la versión concreta.

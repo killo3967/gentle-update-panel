@@ -47,6 +47,7 @@ pub fn app_status(app: AppHandle) -> AppStatus {
             .app_config_dir()
             .map(|path| path.display().to_string())
             .unwrap_or_default(),
+        locale: crate::locale::target_language(),
     }
 }
 
@@ -102,6 +103,8 @@ pub async fn run_doctor(app: AppHandle) -> DoctorView {
             kind::DOCTOR,
             format!("Doctor manual: {}", doctor::status_label(&view.status)),
         )
+        .key("journal.doctor.manual")
+        .arg("status", view.status.clone())
         .detail(doctor::summary_line(&view)),
     );
     view
@@ -163,6 +166,8 @@ pub fn apply_preflight(app: AppHandle, ids: Vec<String>) -> PreflightReport {
                     }
                 ),
             )
+            .key("journal.preflight")
+            .arg("count", running.len().to_string())
             .detail(detail),
         );
     }
@@ -204,7 +209,7 @@ pub async fn apply_updates(app: AppHandle, ids: Vec<String>) -> Result<ApplyOutc
     {
         let state = app.state::<AppState>();
         if state.applying.swap(true, Ordering::SeqCst) {
-            return Err("ya hay una actualización en curso".to_string());
+            return Err("error.busy".to_string());
         }
     }
     let _guard = ApplyingGuard(app.clone());
@@ -221,6 +226,7 @@ pub async fn apply_updates(app: AppHandle, ids: Vec<String>) -> Result<ApplyOutc
         &snapshot,
         previous.as_ref(),
         "Comprobación posterior a la actualización",
+        "journal.check.afterUpdate",
     );
 
     Ok(ApplyOutcome {
@@ -236,7 +242,7 @@ pub async fn apply_panel_update(app: AppHandle) -> Result<(), String> {
     {
         let state = app.state::<AppState>();
         if state.applying.swap(true, Ordering::SeqCst) {
-            return Err("ya hay una actualización en curso".to_string());
+            return Err("error.busy".to_string());
         }
     }
     let _guard = ApplyingGuard(app.clone());
@@ -278,7 +284,7 @@ pub async fn translate_release(
     };
 
     if !config.translation_enabled {
-        return Err("la traducción está desactivada".to_string());
+        return Err("error.translationDisabled".to_string());
     }
 
     service
@@ -314,10 +320,10 @@ pub fn search_notes(app: AppHandle, query: String) -> Vec<NoteHit> {
 pub fn open_url(url: String) -> Result<(), String> {
     let trimmed = url.trim();
     if !trimmed.starts_with("https://") || trimmed.len() > 2048 {
-        return Err("solo se abren enlaces https".to_string());
+        return Err("error.urlScheme".to_string());
     }
     if trimmed.chars().any(|c| c.is_whitespace() || c == '"') {
-        return Err("enlace inválido".to_string());
+        return Err("error.urlInvalid".to_string());
     }
 
     std::process::Command::new("cmd")

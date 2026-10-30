@@ -47,7 +47,8 @@ import {
   type View,
 } from "../store";
 import type { Config } from "../types";
-import { esc, icons, plural } from "./format";
+import { esc, icons } from "./format";
+import { t, tn } from "../i18n";
 import { renderContent, renderRail } from "./views";
 
 let drawerCollapsed = false;
@@ -73,9 +74,9 @@ export function mount(): void {
         </div>
         <div class="title-status" id="title-status" data-tauri-drag-region></div>
         <div class="win-controls">
-          <button class="win-btn" data-action="win-minimize" aria-label="Minimizar">${icons.minimize}</button>
-          <button class="win-btn" data-action="win-maximize" aria-label="Maximizar o restaurar">${icons.maximize}</button>
-          <button class="win-btn win-close" data-action="win-close" aria-label="Cerrar a la bandeja">${icons.close}</button>
+          <button class="win-btn" data-action="win-minimize" aria-label="${t("shell.minimize")}">${icons.minimize}</button>
+          <button class="win-btn" data-action="win-maximize" aria-label="${t("shell.maximize")}">${icons.maximize}</button>
+          <button class="win-btn win-close" data-action="win-close" aria-label="${t("shell.closeToTray")}">${icons.close}</button>
         </div>
       </header>
 
@@ -179,12 +180,12 @@ function renderStatus(): string {
   const pending = pendingCount();
   const tone = pending > 0 ? "accent" : state.snapshot ? "ok" : "faint";
   const label = state.checking
-    ? "Comprobando"
+    ? t("shell.checking")
     : pending > 0
-      ? `${pending} ${plural(pending, "pendiente", "pendientes")}`
+      ? `${pending} ${t("shell.pending", { count: pending })}`
       : state.snapshot
-        ? "Al día"
-        : "Sin datos";
+        ? t("status.upToDate")
+        : t("status.unknown");
 
   return `<span class="status-pill tone--${tone}"><span class="status-dot"></span>${label}</span>`;
 }
@@ -195,11 +196,15 @@ function renderDrawer(): string {
   const step = state.step;
   const title = state.applying
     ? step
-      ? `Actualizando ${step.label.split(" · ")[0]} · ${step.index + 1}/${step.total}`
-      : "Preparando la actualización"
+      ? t("drawer.updating", {
+          step: step.label.split(" · ")[0],
+          current: step.index + 1,
+          total: step.total,
+        })
+      : t("drawer.preparing")
     : state.outcome
-      ? "Actualización terminada"
-      : "Actividad";
+      ? t("drawer.finished")
+      : t("drawer.activity");
 
   const percent = state.applying
     ? step
@@ -219,22 +224,22 @@ function renderDrawer(): string {
   const outcome = state.outcome;
   const summary = outcome
     ? `<div class="drawer-summary">
-        <span class="tone--ok">${outcome.applied.length} ${plural(outcome.applied.length, "aplicada", "aplicadas")}</span>
-        ${outcome.failed.length > 0 ? `<span class="tone--danger">${outcome.failed.length} ${plural(outcome.failed.length, "fallida", "fallidas")}</span>` : ""}
+        <span class="tone--ok">${outcome.applied.length} ${t("drawer.appliedCount", { count: outcome.applied.length })}</span>
+        ${outcome.failed.length > 0 ? `<span class="tone--danger">${outcome.failed.length} ${t("drawer.failedCount", { count: outcome.failed.length })}</span>` : ""}
         ${outcome.failed.map((failure) => `<div class="failure"><strong>${esc(failure.label)}</strong><span>${esc(failure.reason)}</span></div>`).join("")}
       </div>`
-    : `<span class="drawer-hint">${state.applying ? "No cierres la ventana hasta que termine." : ""}</span>`;
+    : `<span class="drawer-hint">${state.applying ? t("drawer.dontClose") : ""}</span>`;
 
-  return `<aside class="drawer ${drawerCollapsed ? "is-collapsed" : ""}" aria-label="Actividad de actualización">
+  return `<aside class="drawer ${drawerCollapsed ? "is-collapsed" : ""}" aria-label="${t("drawer.activityLabel")}">
     <header class="drawer-head">
-      <div class="drawer-title"><span class="eyebrow">Actividad</span><strong>${esc(title)}</strong></div>
+      <div class="drawer-title"><span class="eyebrow">${t("drawer.activity")}</span><strong>${esc(title)}</strong></div>
       <div class="drawer-tools">
-        <button class="icon-btn" data-action="drawer-toggle" aria-label="${drawerCollapsed ? "Expandir" : "Plegar"}">${icons.chevron}</button>
-        ${state.applying ? "" : `<button class="icon-btn" data-action="drawer-close" aria-label="Cerrar actividad">${icons.x}</button>`}
+        <button class="icon-btn" data-action="drawer-toggle" aria-label="${drawerCollapsed ? t("drawer.expand") : t("drawer.collapse")}">${icons.chevron}</button>
+        ${state.applying ? "" : `<button class="icon-btn" data-action="drawer-close" aria-label="${t("drawer.close")}">${icons.x}</button>`}
       </div>
     </header>
     <div class="bar"><span style="width:${percent}%"></span></div>
-    ${drawerCollapsed ? "" : `<div class="drawer-log">${lines || '<div class="log-line"><span class="log-text">Esperando salida…</span></div>'}</div>`}
+    ${drawerCollapsed ? "" : `<div class="drawer-log">${lines || `<div class="log-line"><span class="log-text">${t("drawer.waiting")}</span></div>`}</div>`}
     <footer class="drawer-foot">${summary}</footer>
   </aside>`;
 }
@@ -315,9 +320,9 @@ async function handleClick(event: MouseEvent): Promise<void> {
     case "journal-copy":
       try {
         await navigator.clipboard.writeText(journalText());
-        toast("Registro copiado al portapapeles", "ok");
+        toast(t("toast.journalCopied"), "ok");
       } catch {
-        toast("No se pudo copiar el registro", "error");
+        toast(t("toast.journalCopyFailed"), "error");
       }
       break;
     case "journal-clear":
@@ -350,9 +355,9 @@ async function handleClick(event: MouseEvent): Promise<void> {
       if (state.contextMenu) {
         try {
           await navigator.clipboard.writeText(state.contextMenu.href);
-          toast("Dirección copiada", "ok");
+          toast(t("toast.linkCopied"), "ok");
         } catch {
-          toast("No se pudo copiar", "error");
+          toast(t("toast.copyFailed"), "error");
         }
       }
       closeContextMenu();
@@ -417,9 +422,9 @@ async function handleClick(event: MouseEvent): Promise<void> {
       if (element.dataset.text) {
         try {
           await navigator.clipboard.writeText(element.dataset.text);
-          toast("Copiado al portapapeles", "ok");
+          toast(t("toast.copied"), "ok");
         } catch {
-          toast("No se pudo copiar", "error");
+          toast(t("toast.copyFailed"), "error");
         }
       }
       break;
@@ -555,7 +560,7 @@ function renderPreflight(): string {
       const commands = list.map((blocker) => blocker.command).join(" | ");
       return `<li class="blocker-row">
         <span class="blocker-kind">${esc(kind)}</span>
-        <span class="mono">${list.length} ${plural(list.length, "proceso", "procesos")}</span>
+        <span class="mono">${list.length} ${t("preflight.processes", { count: list.length })}</span>
         <span class="blocker-cmd" title="${esc(commands)}">${esc(detail)}</span>
       </li>`;
     })
@@ -565,7 +570,12 @@ function renderPreflight(): string {
     .map((step) => {
       const checked = state.preflightSelected.has(step.id);
       const tone = step.impact === "block" ? "danger" : step.impact === "warn" ? "accent" : "ok";
-      const label = step.impact === "block" ? "Bloquea" : step.impact === "warn" ? "Aviso" : "Sin impacto";
+      const label =
+        step.impact === "block"
+          ? t("preflight.block")
+          : step.impact === "warn"
+            ? t("preflight.warn")
+            : t("preflight.noImpact");
       return `<label class="preflight-step is-${step.impact}">
         <input type="checkbox" data-preflight-step data-id="${esc(step.id)}" ${checked ? "checked" : ""}/>
         <span class="step-box" aria-hidden="true"></span>
@@ -582,18 +592,18 @@ function renderPreflight(): string {
     <div class="modal" role="dialog" aria-modal="true" aria-labelledby="preflight-title">
       <header class="modal-head">
         <div>
-          <span class="eyebrow">Antes de actualizar</span>
-          <h2 id="preflight-title" class="display">Procesos en marcha</h2>
+          <span class="eyebrow">${t("preflight.eyebrow")}</span>
+          <h2 id="preflight-title" class="display">${t("preflight.title")}</h2>
         </div>
-        <button class="icon-btn" data-action="preflight-cancel" aria-label="Cancelar">${icons.x}</button>
+        <button class="icon-btn" data-action="preflight-cancel" aria-label="${t("preflight.cancel")}">${icons.x}</button>
       </header>
-      <p class="lead">Se han detectado ${blockers.length} ${plural(blockers.length, "proceso", "procesos")}. Revisa qué se ve afectado antes de continuar.</p>
+      <p class="lead">${tn("preflight.lead", blockers.length)}</p>
       <ul class="blocker-list">${blockerRows}</ul>
       <div class="preflight-steps">${stepRows}</div>
       <footer class="modal-foot">
-        <button class="btn" data-action="preflight-cancel">Cancelar</button>
+        <button class="btn" data-action="preflight-cancel">${t("preflight.cancel")}</button>
         <button class="btn btn-primary" data-action="preflight-confirm" ${selected === 0 ? "disabled" : ""}>
-          Actualizar ${selected} ${plural(selected, "pieza", "piezas")}
+          ${tn("preflight.apply", selected)}
         </button>
       </footer>
     </div>
@@ -605,7 +615,7 @@ function renderContextMenu(): string {
   if (!menu) return "";
 
   return `<div class="context-menu" style="left:${menu.x}px;top:${menu.y}px" role="menu">
-    <button role="menuitem" data-action="context-open">${icons.external}<span>Abrir enlace en el navegador</span></button>
-    <button role="menuitem" data-action="context-copy">${icons.copy}<span>Copiar dirección</span></button>
+    <button role="menuitem" data-action="context-open">${icons.external}<span>${t("context.open")}</span></button>
+    <button role="menuitem" data-action="context-copy">${icons.copy}<span>${t("context.copy")}</span></button>
   </div>`;
 }

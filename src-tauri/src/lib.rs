@@ -5,6 +5,7 @@ mod commands;
 mod doctor;
 mod domain;
 mod health;
+mod i18n;
 mod journal;
 mod locale;
 mod notes;
@@ -54,7 +55,9 @@ pub fn run() {
                         "Panel iniciado · v{}",
                         app.package_info().version
                     ),
-                ),
+                )
+                .key("journal.app.start")
+                .arg("version", app.package_info().version.to_string()),
             );
 
             // Autostart launches with --minimized; a manual launch shows the panel.

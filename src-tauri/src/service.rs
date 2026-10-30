@@ -50,7 +50,13 @@ pub async fn run_check(app: &AppHandle) -> Snapshot {
     // The panel's own release is checked in the same cycle, so it lands in the
     // tray, the notification and the journal like any other piece.
     crate::panel::refresh(app).await;
-    record_summary(app, &snapshot, previous.as_ref(), "Comprobación completada");
+    record_summary(
+        app,
+        &snapshot,
+        previous.as_ref(),
+        "Comprobación completada",
+        "journal.check.done",
+    );
     let fresh = snapshot.doctor_hint(previous.as_ref());
 
     if fresh.is_empty() {
@@ -74,6 +80,7 @@ pub async fn run_check(app: &AppHandle) -> Snapshot {
                 &after,
                 Some(&before),
                 "Comprobación posterior a la actualización",
+                "journal.check.afterUpdate",
             );
         });
     }
@@ -87,6 +94,7 @@ pub fn record_summary(
     snapshot: &Snapshot,
     previous: Option<&Snapshot>,
     title: &str,
+    key: &str,
 ) {
     let pending: Vec<&UpdateItem> = snapshot
         .items
@@ -104,7 +112,19 @@ pub fn record_summary(
         detail.push_str(&format!(" · {} avisos", snapshot.warnings.len()));
     }
 
-    journal::record(app, Draft::new(kind::CHECK, title).detail(detail));
+    let mut draft = Draft::new(kind::CHECK, title)
+        .key(key)
+        .detail(detail)
+        .detail_key("journal.check.detail")
+        .detail_arg("items", snapshot.items.len().to_string())
+        .detail_arg("pending", pending.len().to_string())
+        .detail_arg("seconds", seconds.to_string());
+    if !snapshot.warnings.is_empty() {
+        draft = draft
+            .detail_key("journal.check.detailWarnings")
+            .detail_arg("warnings", snapshot.warnings.len().to_string());
+    }
+    journal::record(app, draft);
 
     // A pending row the stored snapshot did not have is news worth telling.
     for item in pending {
@@ -120,7 +140,10 @@ pub fn record_summary(
             continue;
         }
 
-        let mut draft = Draft::new(kind::DETECTED, detection_title(item)).item(&item.id);
+        let mut draft = Draft::new(kind::DETECTED, detection_title(item))
+            .key(detection_key(item))
+            .arg("name", item.name.clone())
+            .item(&item.id);
         if let Some(versions) = detection_detail(item) {
             draft = draft.detail(versions);
         }
@@ -130,6 +153,13 @@ pub fn record_summary(
 
 fn is_pending(item: &UpdateItem) -> bool {
     !item.ignored && matches!(item.status, Status::UpdateAvailable | Status::Missing)
+}
+
+fn detection_key(item: &UpdateItem) -> &'static str {
+    match item.status {
+        Status::Missing => "journal.detected.missing",
+        _ => "journal.detected.update",
+    }
 }
 
 fn detection_title(item: &UpdateItem) -> String {
@@ -161,9 +191,12 @@ fn notify(app: &AppHandle, snapshot: &Snapshot, fresh: &[String], automation: Au
         .collect();
 
     let title = if fresh.len() == 1 {
-        "1 actualización disponible".to_string()
+        crate::i18n::t("notify.updates.one").to_string()
     } else {
-        format!("{} actualizaciones disponibles", fresh.len())
+        crate::i18n::t_args(
+            "notify.updates.many",
+            &[("count", &fresh.len().to_string())],
+        )
     };
 
     let _ = app

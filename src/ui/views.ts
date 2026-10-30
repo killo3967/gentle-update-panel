@@ -25,23 +25,26 @@ import {
   dayKey,
   dayLabel,
   delta,
+  journalDetail,
+  journalTitle,
   esc,
   gauge,
   doctorMeta,
   icons,
   isActionable,
   markdownToHtml,
-  plural,
   repositorySlug,
   relativeTime,
   sourceLabel,
   statusMeta,
 } from "./format";
 
+import { t, tn } from "../i18n";
+
 const GROUPS: Array<{ kind: UpdateItem["kind"]; label: string }> = [
-  { kind: "ecosystem", label: "Ecosistema Gentle" },
-  { kind: "pi", label: "pi" },
-  { kind: "piPackage", label: "Paquetes de pi" },
+  { kind: "ecosystem", label: "group.ecosystem" },
+  { kind: "pi", label: "group.pi" },
+  { kind: "piPackage", label: "group.piPackages" },
 ];
 
 export function renderRail(): string {
@@ -55,7 +58,7 @@ export function renderRail(): string {
     const groupItems = all.filter((item) => item.kind === group.kind);
     if (groupItems.length === 0) return "";
     return `<div class="group">
-      <div class="eyebrow group-label">${group.label}</div>
+      <div class="eyebrow group-label">${t(group.label)}</div>
       ${groupItems.map(pieceRow).join("")}
     </div>`;
   }).join("");
@@ -63,35 +66,35 @@ export function renderRail(): string {
   return `
   <aside class="rail">
     <div class="rail-top">
-      <div class="eyebrow">Sistema</div>
+      <div class="eyebrow">${t("rail.system")}</div>
       <div class="system-card">
         <div class="system-gauge">${gauge(pending > 0 ? "updateAvailable" : snapshot ? "upToDate" : "unknown", 78)}</div>
         <div class="system-numbers">
           <div class="big"><span class="accent">${pending}</span><span class="slash">/</span><span class="total">${total}</span></div>
-          <div class="caption">${pending === 0 ? "todo al día" : plural(pending, "pieza pendiente", "piezas pendientes")}</div>
-          <div class="stamp">Última · ${relativeTime(snapshot?.checkedAt ?? null)}</div>
+          <div class="caption">${pending === 0 ? t("rail.allClear") : t("rail.pending", { count: pending })}</div>
+          <div class="stamp">${t("rail.lastChecked", { time: relativeTime(snapshot?.checkedAt ?? null) })}</div>
         </div>
       </div>
       <button class="btn btn-primary btn-block" data-action="check" ${state.checking ? "disabled" : ""}>
         ${icons.refresh}
-        <span>${state.checking ? "Comprobando…" : "Comprobar ahora"}</span>
+        <span>${state.checking ? t("rail.checking") : t("rail.checkNow")}</span>
       </button>
     </div>
 
-    <nav class="nav" role="tablist" aria-label="Secciones">
-      ${navItem("overview", "Resumen", icons.overview)}
-      ${navItem("doctor", "Doctor", icons.stethoscope)}
-      ${navItem("log", "Registro", icons.journal)}
-      ${navItem("settings", "Ajustes", icons.sliders)}
+    <nav class="nav" role="tablist" aria-label="${t("nav.sections")}">
+      ${navItem("overview", t("nav.overview"), icons.overview)}
+      ${navItem("doctor", t("nav.doctor"), icons.stethoscope)}
+      ${navItem("log", t("nav.log"), icons.journal)}
+      ${navItem("settings", t("nav.settings"), icons.sliders)}
     </nav>
 
     <div class="pieces">
-      <div class="eyebrow pieces-label">Piezas</div>
-      ${total === 0 ? `<p class="rail-empty">Sin datos todavía. Comprueba para descubrir qué hay instalado.</p>` : groups}
+      <div class="eyebrow pieces-label">${t("rail.pieces")}</div>
+      ${total === 0 ? `<p class="rail-empty">${t("rail.empty")}</p>` : groups}
     </div>
 
     <div class="rail-foot">
-      ${warnings.length > 0 ? `<button class="warn-link" data-action="warnings">${icons.alert}<span>${warnings.length} ${plural(warnings.length, "aviso", "avisos")}</span></button>` : `<span class="quiet">Sin avisos</span>`}
+      ${warnings.length > 0 ? `<button class="warn-link" data-action="warnings">${icons.alert}<span>${tn("rail.warnings", warnings.length)}</span></button>` : `<span class="quiet">${t("rail.noWarnings")}</span>`}
       <span class="version">v${esc(state.version || "0.1.0")}</span>
     </div>
 
@@ -111,7 +114,7 @@ function pieceRow(item: UpdateItem): string {
   const selected = state.selectedId === item.id;
   const checked = state.selection.has(item.id);
   const ignored = item.ignored;
-  const meta = ignored ? { label: "Ignorada", tone: "faint" as const } : statusMeta(item.status);
+  const meta = ignored ? { label: t("piece.ignored"), tone: "faint" as const } : statusMeta(item.status);
   const actionable = !ignored && isActionable(item.status);
 
   return `<div class="piece ${selected ? "is-selected" : ""} ${ignored ? "is-ignored" : ""}" role="button" tabindex="0"
@@ -120,20 +123,20 @@ function pieceRow(item: UpdateItem): string {
       actionable
         ? `<span class="piece-check"><input type="checkbox" id="pick-${esc(item.id)}" data-action="toggle"
              data-id="${esc(item.id)}" ${checked ? "checked" : ""}
-             aria-label="Seleccionar ${esc(item.name)}"/><label for="pick-${esc(item.id)}"></label></span>`
+             aria-label="${t("piece.select", { name: esc(item.name) })}"/><label for="pick-${esc(item.id)}"></label></span>`
         : `<span class="piece-check is-empty"></span>`
     }
     <span class="dot dot--${meta.tone}" aria-hidden="true"></span>
     <span class="piece-name">${esc(item.name)}</span>
-    <span class="delta" title="${esc(item.installed ?? "sin instalar")} → ${esc(item.latest ?? "?")}">${esc(delta(item.installed, item.latest))}</span>
+    <span class="delta" title="${esc(item.installed ?? t("piece.notInstalled"))} → ${esc(item.latest ?? "?")}">${esc(delta(item.installed, item.latest))}</span>
   </div>`;
 }
 
 function warningsPopover(warnings: string[]): string {
-  return `<div class="popover" role="dialog" aria-label="Avisos de la comprobación">
+  return `<div class="popover" role="dialog" aria-label="${t("warnings.dialog")}">
     <div class="popover-head">
-      <span class="eyebrow">Avisos</span>
-      <button class="icon-btn" data-action="warnings" aria-label="Cerrar avisos">${icons.x}</button>
+      <span class="eyebrow">${t("warnings.title")}</span>
+      <button class="icon-btn" data-action="warnings" aria-label="${t("warnings.close")}">${icons.x}</button>
     </div>
     <ul class="warn-list">${warnings.map((warning) => `<li>${esc(warning)}</li>`).join("")}</ul>
   </div>`;
@@ -162,9 +165,9 @@ function renderOverview(): string {
     return `<section class="content">
       <div class="empty-state">
         ${gauge("unknown", 120)}
-        <h1 class="display">Sin datos todavía</h1>
-        <p class="lead">${state.checking ? "Consultando el ecosistema…" : "Lanza una comprobación para ver qué hay instalado y qué se puede actualizar."}</p>
-        <button class="btn btn-primary" data-action="check" ${state.checking ? "disabled" : ""}>${icons.refresh}<span>${state.checking ? "Comprobando…" : "Comprobar ahora"}</span></button>
+        <h1 class="display">${t("overview.emptyTitle")}</h1>
+        <p class="lead">${state.checking ? t("overview.emptyLeadChecking") : t("overview.emptyLead")}</p>
+        <button class="btn btn-primary" data-action="check" ${state.checking ? "disabled" : ""}>${icons.refresh}<span>${state.checking ? t("rail.checking") : t("rail.checkNow")}</span></button>
       </div>
     </section>`;
   }
@@ -177,8 +180,8 @@ function renderOverview(): string {
     ).length;
     return `<section class="card group-card">
       <header class="card-head">
-        <h2 class="card-title">${group.label}</h2>
-        <span class="card-meta">${pendingInGroup > 0 ? `${pendingInGroup} ${plural(pendingInGroup, "pendiente", "pendientes")}` : "al día"}</span>
+        <h2 class="card-title">${t(group.label)}</h2>
+        <span class="card-meta">${pendingInGroup > 0 ? `${pendingInGroup} ${t("overview.groupPending", { count: pendingInGroup })}` : t("overview.groupClear")}</span>
       </header>
       <div class="rows">${groupItems.map(overviewRow).join("")}</div>
     </section>`;
@@ -187,21 +190,21 @@ function renderOverview(): string {
   return `<section class="content">
     <header class="view-head">
       <div class="view-head-copy">
-        <div class="eyebrow">Resumen</div>
-        <h1 class="display">${pending === 0 ? "Todo al día" : `${pending} ${plural(pending, "actualización disponible", "actualizaciones disponibles")}`}</h1>
-        <p class="lead">Comprobado ${relativeTime(snapshot.checkedAt)} · ${clockTime(snapshot.checkedAt)} · ${snapshot.items.length} piezas · ${Math.max(1, Math.round(snapshot.durationMs / 1000))} s</p>
+        <div class="eyebrow">${t("nav.overview")}</div>
+        <h1 class="display">${pending === 0 ? t("overview.allClear") : `${pending} ${t("overview.available", { count: pending })}`}</h1>
+        <p class="lead">${t("overview.lead", { when: relativeTime(snapshot.checkedAt), time: clockTime(snapshot.checkedAt), pieces: snapshot.items.length, seconds: Math.max(1, Math.round(snapshot.durationMs / 1000)) })}</p>
       </div>
       <div class="hero-gauge">${gauge(pending > 0 ? "updateAvailable" : "upToDate", 148, true)}</div>
     </header>
 
     <div class="toolbar">
       <button class="btn btn-primary" data-action="apply-selected" ${selection === 0 || state.applying ? "disabled" : ""}>
-        ${icons.check}<span>Actualizar seleccionadas${selection > 0 ? ` (${selection})` : ""}</span>
+        ${icons.check}<span>${t("overview.applySelected")}${selection > 0 ? ` (${selection})` : ""}</span>
       </button>
       <button class="btn" data-action="select-all" ${pending === 0 ? "disabled" : ""}>
-        ${selection === actionableItems().length && pending > 0 ? "Quitar selección" : "Seleccionar todo"}
+        ${selection === actionableItems().length && pending > 0 ? t("overview.clearSelection") : t("overview.selectAll")}
       </button>
-      <span class="toolbar-hint">${updatesCount() > 0 ? `${updatesCount()} ${plural(updatesCount(), "versión nueva detectada", "versiones nuevas detectadas")}` : "Nada que instalar"}</span>
+      <span class="toolbar-hint">${updatesCount() > 0 ? `${updatesCount()} ${t("overview.newVersions", { count: updatesCount() })}` : t("overview.nothingToInstall")}</span>
     </div>
 
     ${renderNotesSearch()}
@@ -214,7 +217,7 @@ function renderOverview(): string {
 
 function overviewRow(item: UpdateItem): string {
   const ignored = item.ignored;
-  const meta = ignored ? { label: "Ignorada", tone: "faint" as const } : statusMeta(item.status);
+  const meta = ignored ? { label: t("piece.ignored"), tone: "faint" as const } : statusMeta(item.status);
   const actionable = !ignored && isActionable(item.status);
   const checked = state.selection.has(item.id);
   const showsDelta = Boolean(item.installed && item.latest && item.installed !== item.latest);
@@ -228,7 +231,7 @@ function overviewRow(item: UpdateItem): string {
 
   return `<div class="row ${state.selectedId === item.id ? "is-selected" : ""} ${ignored ? "is-ignored" : ""}">
     <div class="row-pick">
-      ${actionable ? `<input type="checkbox" id="row-${esc(item.id)}" data-action="toggle" data-id="${esc(item.id)}" ${checked ? "checked" : ""} aria-label="Seleccionar ${esc(item.name)}"/><label for="row-${esc(item.id)}"></label>` : ""}
+      ${actionable ? `<input type="checkbox" id="row-${esc(item.id)}" data-action="toggle" data-id="${esc(item.id)}" ${checked ? "checked" : ""} aria-label="${t("piece.select", { name: esc(item.name) })}"/><label for="row-${esc(item.id)}"></label>` : ""}
     </div>
     <button class="row-main" data-action="select" data-id="${esc(item.id)}">
       <span class="row-name">${esc(item.name)}</span>
@@ -236,15 +239,15 @@ function overviewRow(item: UpdateItem): string {
     </button>
     <span class="row-versions">${versions}</span>
     <span class="pill pill--${meta.tone}">${meta.label}</span>
-    ${actionable ? `<button class="btn btn-ghost btn-small" data-action="apply-one" data-id="${esc(item.id)}" ${state.applying ? "disabled" : ""}>Actualizar</button>` : ignored ? `<span class="row-ignored">${icons.x}</span>` : `<span class="row-ok">${icons.check}</span>`}
+    ${actionable ? `<button class="btn btn-ghost btn-small" data-action="apply-one" data-id="${esc(item.id)}" ${state.applying ? "disabled" : ""}>${t("action.apply")}</button>` : ignored ? `<span class="row-ignored">${icons.x}</span>` : `<span class="row-ok">${icons.check}</span>`}
   </div>`;
 }
 
 function renderPiRunningBand(): string {
   return `<div class="warn-band">
     ${icons.alert}
-    <div><strong>pi está en marcha</strong>
-    <span>Actualiza pi o sus paquetes cuando cierres la sesión: ahora cambiarían bajo un proceso vivo.</span></div>
+    <div><strong>${t("overview.piRunningTitle")}</strong>
+    <span>${t("overview.piRunningBody")}</span></div>
   </div>`;
 }
 
@@ -257,25 +260,25 @@ function renderPanelBand(): string {
     const percent = total > 0 ? Math.min(100, Math.round((state.panelReceived / total) * 100)) : 0;
     return `<div class="panel-band is-busy">
     ${icons.refresh}
-    <div><strong>Instalando el panel ${esc(update.latest)}</strong>
-    <span>${percent}% descargado · el panel se cerrará, se instalará y volverá a abrirse solo.</span></div>
+    <div><strong>${t("panel.installing", { version: esc(update.latest) })}</strong>
+    <span>${t("panel.progress", { percent })}</span></div>
   </div>`;
   }
 
   return `<div class="panel-band">
     ${icons.arrowRight}
-    <div><strong>Panel ${esc(update.latest)} disponible</strong>
-    <span>Estás en la ${esc(update.current)}. Al actualizar, el panel se cierra, instala y vuelve a abrirse.</span></div>
-    <button class="btn btn-primary btn-small" data-action="apply-panel-update" ${state.applying ? "disabled" : ""}>Actualizar y reiniciar</button>
+    <div><strong>${t("panel.available", { version: esc(update.latest) })}</strong>
+    <span>${t("panel.current", { version: esc(update.current) })}</span></div>
+    <button class="btn btn-primary btn-small" data-action="apply-panel-update" ${state.applying ? "disabled" : ""}>${t("panel.apply")}</button>
   </div>`;
 }
 
 function renderWarnBand(warnings: string[]): string {
   return `<div class="warn-band">
     ${icons.alert}
-    <div><strong>La comprobación dejó ${warnings.length} ${plural(warnings.length, "aviso", "avisos")}</strong>
+    <div><strong>${tn("overview.warningsBand", warnings.length)}</strong>
     <span>${esc(warnings.slice(0, 2).join(" · "))}${warnings.length > 2 ? "…" : ""}</span></div>
-    <button class="btn btn-ghost btn-small" data-action="warnings">Ver</button>
+    <button class="btn btn-ghost btn-small" data-action="warnings">${t("overview.warningsShow")}</button>
   </div>`;
 }
 
@@ -285,7 +288,7 @@ function renderWarnBand(warnings: string[]): string {
 
 function renderDetail(item: UpdateItem): string {
   const ignored = item.ignored;
-  const meta = ignored ? { label: "Ignorada", tone: "faint" as const } : statusMeta(item.status);
+  const meta = ignored ? { label: t("piece.ignored"), tone: "faint" as const } : statusMeta(item.status);
   const actionable = !ignored && isActionable(item.status);
   const notes = state.notes[item.id];
   const loading = state.notesLoading[item.id];
@@ -293,29 +296,29 @@ function renderDetail(item: UpdateItem): string {
   return `<section class="content detail">
     <header class="detail-head">
       <div class="detail-copy">
-        <button class="btn btn-ghost btn-small back-link" data-action="back">← Volver a la lista</button>
-        <div class="eyebrow">${item.kind === "ecosystem" ? "Ecosistema Gentle" : item.kind === "pi" ? "Núcleo" : "Paquete de pi"}</div>
+        <button class="btn btn-ghost btn-small back-link" data-action="back">${t("detail.back")}</button>
+        <div class="eyebrow">${item.kind === "ecosystem" ? t("group.ecosystem") : item.kind === "pi" ? t("detail.core") : t("detail.piPackage")}</div>
         <h1 class="display detail-name">${esc(item.name)}</h1>
         <div class="detail-sub"><span class="mono">${esc(sourceLabel(item.source))}</span><span class="pill pill--${meta.tone}">${meta.label}</span></div>
         ${item.detail && !ignored ? `<p class="detail-note">${esc(item.detail)}</p>` : ""}
-        ${ignored ? `<p class="detail-note">Está ignorada: no cuenta como pendiente, no avisa y no se actualiza. Puedes revertirlo en Ajustes.</p>` : ""}
+        ${ignored ? `<p class="detail-note">${t("detail.ignoredNote")}</p>` : ""}
       </div>
       <div class="detail-gauge">${gauge(item.status, 132, true)}</div>
     </header>
 
     <div class="versions">
-      <div class="version-cell"><span class="version-label">instalada</span><span class="version-value">${esc(item.installed ?? "—")}</span></div>
+      <div class="version-cell"><span class="version-label">${t("detail.installed")}</span><span class="version-value">${esc(item.installed ?? "—")}</span></div>
       <span class="version-arrow">${icons.arrowRight}</span>
-      <div class="version-cell"><span class="version-label">disponible</span><span class="version-value accent">${esc(item.latest ?? "—")}</span></div>
+      <div class="version-cell"><span class="version-label">${t("detail.available")}</span><span class="version-value accent">${esc(item.latest ?? "—")}</span></div>
     </div>
 
     <div class="actions">
-      ${actionable ? `<button class="btn btn-primary" data-action="apply-one" data-id="${esc(item.id)}" ${state.applying ? "disabled" : ""}>${icons.arrowRight}<span>${item.installed ? `Actualizar a ${esc(item.latest ?? "")}` : "Instalar"}</span></button>` : ""}
-      ${item.notesKey ? `<button class="btn" data-action="load-notes" data-id="${esc(item.id)}">${icons.refresh}<span>Ver notas</span></button>` : ""}
-      ${notes?.url ? `<button class="btn" data-action="open-url" data-url="${esc(notes.url)}">${icons.external}<span>Abrir en el navegador</span></button>` : ""}
-      <button class="btn" data-action="doctor">${icons.stethoscope}<span>Doctor</span></button>
+      ${actionable ? `<button class="btn btn-primary" data-action="apply-one" data-id="${esc(item.id)}" ${state.applying ? "disabled" : ""}>${icons.arrowRight}<span>${item.installed ? t("detail.updateTo", { version: esc(item.latest ?? "") }) : t("action.install")}</span></button>` : ""}
+      ${item.notesKey ? `<button class="btn" data-action="load-notes" data-id="${esc(item.id)}">${icons.refresh}<span>${t("detail.viewNotes")}</span></button>` : ""}
+      ${notes?.url ? `<button class="btn" data-action="open-url" data-url="${esc(notes.url)}">${icons.external}<span>${t("detail.openBrowser")}</span></button>` : ""}
+      <button class="btn" data-action="doctor">${icons.stethoscope}<span>${t("nav.doctor")}</span></button>
       <button class="btn" data-action="toggle-ignored" data-id="${esc(item.id)}">
-        ${ignored ? icons.check : icons.x}<span>${ignored ? "Dejar de ignorar" : "Ignorar"}</span>
+        ${ignored ? icons.check : icons.x}<span>${ignored ? t("action.unignore") : t("action.ignore")}</span>
       </button>
     </div>
 
@@ -332,23 +335,23 @@ function renderNotes(
   // of showing another project's changelog.
   if (!item.notesKey) {
     return `<section class="card notes-card">
-      <header class="card-head"><h2 class="card-title">Notas de versión</h2></header>
-      <div class="notes-empty"><p>Esta pieza no declara un repositorio del que leer notas de versión.</p></div>
+      <header class="card-head"><h2 class="card-title">${t("detail.notesTitle")}</h2></header>
+      <div class="notes-empty"><p>${t("detail.notesNoRepo")}</p></div>
     </section>`;
   }
 
   if (loading && !notes) {
     return `<section class="card notes-card">
-      <header class="card-head"><h2 class="card-title">Notas de versión</h2></header>
-      <div class="notes-loading"><span class="spinner" aria-hidden="true"></span><span>Cargando notas de ${esc(item.name)}…</span></div>
+      <header class="card-head"><h2 class="card-title">${t("detail.notesTitle")}</h2></header>
+      <div class="notes-loading"><span class="spinner" aria-hidden="true"></span><span>${t("detail.notesLoading", { name: esc(item.name) })}</span></div>
     </section>`;
   }
 
   if (!notes) {
     return `<section class="card notes-card">
-      <header class="card-head"><h2 class="card-title">Notas de versión</h2></header>
-      <div class="notes-empty"><p>Aún no se han cargado las notas de esta pieza.</p>
-      <button class="btn btn-small" data-action="load-notes" data-id="${esc(item.id)}">Cargar notas</button></div>
+      <header class="card-head"><h2 class="card-title">${t("detail.notesTitle")}</h2></header>
+      <div class="notes-empty"><p>${t("detail.notesIdle")}</p>
+      <button class="btn btn-small" data-action="load-notes" data-id="${esc(item.id)}">${t("detail.notesLoad")}</button></div>
     </section>`;
   }
 
@@ -359,31 +362,31 @@ function renderNotes(
 
   const nav =
     total > 1
-      ? `<div class="release-nav" role="group" aria-label="Versiones">
+      ? `<div class="release-nav" role="group" aria-label="${t("detail.versions")}">
           <button class="release-arrow" data-action="release-prev" data-id="${esc(item.id)}"
-            ${index <= 0 ? "disabled" : ""} aria-label="Versión más reciente" title="Versión más reciente">${icons.chevronLeft}</button>
+            ${index <= 0 ? "disabled" : ""} aria-label="${t("detail.newerRelease")}" title="${t("detail.newerRelease")}">${icons.chevronLeft}</button>
           <span class="release-counter">${index + 1} / ${total}</span>
           <button class="release-arrow" data-action="release-next" data-id="${esc(item.id)}"
-            ${index >= total - 1 ? "disabled" : ""} aria-label="Versión anterior" title="Versión anterior">${icons.chevronRight}</button>
+            ${index >= total - 1 ? "disabled" : ""} aria-label="${t("detail.olderRelease")}" title="${t("detail.olderRelease")}">${icons.chevronRight}</button>
         </div>`
       : "";
 
   return `<section class="card notes-card">
     <header class="card-head">
-      <h2 class="card-title">Notas de la versión ${esc(release?.version ?? "")}</h2>
+      <h2 class="card-title">${t("detail.releaseTitle", { version: esc(release?.version ?? "") })}</h2>
       <div class="card-tools">
         ${nav}
         ${total > 0 ? `<button class="btn btn-small ${state.config?.translationEnabled ? "btn-primary" : ""}" data-action="toggle-translation">
-          ${state.config?.translationEnabled ? "Ver original" : "Traducir"}
+          ${state.config?.translationEnabled ? t("detail.showOriginal") : t("detail.translate")}
         </button>` : ""}
-        <button class="icon-btn" data-action="load-notes" data-id="${esc(item.id)}" aria-label="Recargar notas" title="Recargar">${icons.refresh}</button>
+        <button class="icon-btn" data-action="load-notes" data-id="${esc(item.id)}" aria-label="${t("detail.reloadNotes")}" title="${t("detail.reload")}">${icons.refresh}</button>
       </div>
     </header>
     ${
       notes.error
-        ? `<div class="notes-empty"><p>${esc(notes.error)}</p>${notes.url ? `<button class="btn btn-small" data-action="open-url" data-url="${esc(notes.url)}">Abrir la ficha del proyecto</button>` : ""}</div>`
+        ? `<div class="notes-empty"><p>${esc(notes.error)}</p>${notes.url ? `<button class="btn btn-small" data-action="open-url" data-url="${esc(notes.url)}">${t("detail.openProject")}</button>` : ""}</div>`
         : total === 0
-          ? `<div class="notes-empty"><p>No hay notas publicadas para esta pieza.</p></div>`
+          ? `<div class="notes-empty"><p>${t("detail.notesEmpty")}</p></div>`
           : `<div class="releases">${releaseBlock(item, release, repo)}</div>`
     }
   </section>`;
@@ -397,9 +400,9 @@ function releaseBlock(item: UpdateItem, release: Release, repo?: string): string
   const body = markdownToHtml(translated?.text ?? release.body, repo);
 
   const badge = translated
-    ? `<span class="pill pill--accent">Traducido · ${esc(engineLabel(translated.engine))}</span>`
+    ? `<span class="pill pill--accent">${t("detail.translated", { engine: esc(engineLabel(translated.engine)) })}</span>`
     : busy
-      ? `<span class="pill pill--faint">Traduciendo…</span>`
+      ? `<span class="pill pill--faint">${t("detail.translating")}</span>`
       : "";
 
   return `<article class="release">
@@ -409,7 +412,7 @@ function releaseBlock(item: UpdateItem, release: Release, repo?: string): string
       ${badge}
     </header>
     <div class="md">${body}</div>
-    ${error ? `<p class="translation-error">No se pudo traducir: ${esc(error)}</p>` : ""}
+    ${error ? `<p class="translation-error">${t("detail.translateFailed", { error: esc(error) })}</p>` : ""}
   </article>`;
 }
 
@@ -433,48 +436,50 @@ function renderDoctor(): string {
     ? [
         view.summary ?? "",
         view.ignoredCount > 0
-          ? `${view.ignoredCount} ${plural(view.ignoredCount, "silenciada", "silenciadas")}`
+          ? `${view.ignoredCount} ${t("doctor.silencedCount", { count: view.ignoredCount })}`
           : "",
-        view.originalStatus !== view.status ? `el CLI dijo ${view.originalStatus}` : "",
+        view.originalStatus !== view.status
+          ? t("doctor.cliSaid", { status: view.originalStatus })
+          : "",
       ]
         .filter(Boolean)
         .join(" · ")
-    : "Ejecuta gentle-ai doctor para revisar binarios, estado y assets instalados.";
+    : t("doctor.emptyLead");
 
   const head = `<header class="view-head">
     <div class="view-head-copy">
-      <div class="eyebrow">Diagnóstico</div>
-      <h1 class="display">${view ? meta.label : "Estado del ecosistema"}</h1>
+      <div class="eyebrow">${t("doctor.eyebrow")}</div>
+      <h1 class="display">${view ? meta.label : t("doctor.ecosystemState")}</h1>
       <p class="lead">${esc(lead)}</p>
     </div>
-    <div class="hero-gauge"><span class="doctor-badge tone--${view ? meta.tone : "faint"}">${view ? meta.label : "Sin datos"}</span></div>
+    <div class="hero-gauge"><span class="doctor-badge tone--${view ? meta.tone : "faint"}">${view ? meta.label : t("status.unknown")}</span></div>
   </header>`;
 
   const controls = `<div class="toolbar">
-    <button class="btn btn-primary" data-action="doctor" ${state.doctorRunning ? "disabled" : ""}>${icons.stethoscope}<span>${state.doctorRunning ? "Ejecutando…" : "Ejecutar doctor"}</span></button>
-    ${view ? `<span class="toolbar-hint">${active.length} ${plural(active.length, "comprobación activa", "comprobaciones activas")}${view.ignoredCount > 0 ? ` · ${view.ignoredCount} silenciada(s)` : ""}</span>` : ""}
+    <button class="btn btn-primary" data-action="doctor" ${state.doctorRunning ? "disabled" : ""}>${icons.stethoscope}<span>${state.doctorRunning ? t("doctor.running") : t("doctor.run")}</span></button>
+    ${view ? `<span class="toolbar-hint">${active.length} ${t("doctor.activeChecks", { count: active.length })}${view.ignoredCount > 0 ? ` · ${t("doctor.hintSilenced", { count: view.ignoredCount })}` : ""}</span>` : ""}
   </div>`;
 
   if (!view) {
     return `<section class="content">${head}${controls}
-      <div class="empty-state small">${icons.stethoscope}<p class="lead">Sin resultados todavía.</p></div>
+      <div class="empty-state small">${icons.stethoscope}<p class="lead">${t("doctor.empty")}</p></div>
     </section>`;
   }
 
   const checks = active.map(doctorRow).join("");
   const hiddenBlock = hidden.length
     ? `<details class="raw-block ignored-checks">
-        <summary>${hidden.length} ${plural(hidden.length, "comprobación silenciada", "comprobaciones silenciadas")}</summary>
+        <summary>${tn("doctor.silencedChecks", hidden.length)}</summary>
         <div class="checks">${hidden.map(doctorRow).join("")}</div>
       </details>`
     : "";
 
   return `<section class="content">${head}${controls}
-    <section class="card"><div class="checks">${checks || `<div class="notes-empty"><p>Todas las comprobaciones están silenciadas. Revísalas en Ajustes → Reglas del doctor.</p></div>`}</div></section>
+    <section class="card"><div class="checks">${checks || `<div class="notes-empty"><p>${t("doctor.allSilenced")}</p></div>`}</div></section>
     ${hiddenBlock}
     ${renderPiHealth()}
     <details class="raw-block">
-      <summary>Salida completa</summary>
+      <summary>${t("doctor.raw")}</summary>
       <pre class="raw">${esc(view.raw)}</pre>
     </details>
   </section>`;
@@ -498,7 +503,7 @@ function checkRow(
       <div class="check-id">${esc(id)}</div>
       <div class="check-message">${esc(message)}</div>
       ${remedy ? `<div class="remedy">${icons.alert}<span>${esc(remedy)}</span>
-        <button class="btn btn-ghost btn-small" data-action="copy" data-text="${esc(remedy)}">${icons.copy}<span>Copiar</span></button></div>` : ""}
+        <button class="btn btn-ghost btn-small" data-action="copy" data-text="${esc(remedy)}">${icons.copy}<span>${t("action.copy")}</span></button></div>` : ""}
     </div>
   </div>`;
 }
@@ -517,18 +522,18 @@ function renderPiHealth(): string {
   const health = state.piHealth;
 
   const header = `<header class="card-head">
-    <h2 class="card-title">Salud de pi y sus paquetes</h2>
+    <h2 class="card-title">${t("doctor.piHealthTitle")}</h2>
     <div class="card-tools">
-      ${health ? `<span class="card-meta">${health.packages.length} piezas · ${health.packages.filter((pkg) => pkg.status !== "ok").length} con problemas · ${esc(relativeTime(health.checkedAt))}</span>` : ""}
+      ${health ? `<span class="card-meta">${t("doctor.piHealthMeta", { pieces: health.packages.length, problems: health.packages.filter((pkg) => pkg.status !== "ok").length, time: esc(relativeTime(health.checkedAt)) })}</span>` : ""}
       <button class="btn btn-small" data-action="pi-health" ${state.piHealthRunning ? "disabled" : ""}>
-        ${state.piHealthRunning ? "Comprobando…" : health ? "Recomprobar" : "Comprobar instalación"}
+        ${state.piHealthRunning ? t("rail.checking") : health ? t("doctor.recheck") : t("doctor.checkInstall")}
       </button>
     </div>
   </header>`;
 
   if (!health) {
     return `<section class="card">${header}
-      <div class="notes-empty"><p>Verifica que cada paquete existe en disco, que su manifiesto se lee, que declara versión y que sus recursos están donde dice.</p></div>
+      <div class="notes-empty"><p>${t("doctor.piHealthEmpty")}</p></div>
     </section>`;
   }
 
@@ -536,13 +541,18 @@ function renderPiHealth(): string {
   return `<section class="card">
     ${header}
     <div class="checks">${health.checks.map(healthRow).join("")}</div>
-    <div class="pkg-list">${packages || `<div class="notes-empty"><p>pi no declara paquetes.</p></div>`}</div>
+    <div class="pkg-list">${packages || `<div class="notes-empty"><p>${t("doctor.piHealthNoPackages")}</p></div>`}</div>
   </section>`;
 }
 
 function packageBlock(pkg: PackageHealth): string {
   const tone = healthTone(pkg.status);
-  const label = pkg.status === "ok" ? "Correcto" : pkg.status === "warn" ? "Revisar" : "Con fallos";
+  const label =
+    pkg.status === "ok"
+      ? t("doctor.ok")
+      : pkg.status === "warn"
+        ? t("doctor.review")
+        : t("doctor.failed");
   const pillTone = tone === "accent" ? "accent" : tone;
   const open = pkg.status === "ok" ? "" : "open";
 
@@ -562,11 +572,11 @@ function packageBlock(pkg: PackageHealth): string {
 // ---------------------------------------------------------------------------
 
 const JOURNAL_FILTERS: Array<{ value: JournalFilter; label: string }> = [
-  { value: "all", label: "Todo" },
-  { value: "detected", label: "Detecciones" },
-  { value: "updates", label: "Actualizaciones" },
-  { value: "checks", label: "Comprobaciones" },
-  { value: "problems", label: "Problemas" },
+  { value: "all", label: "journal.filterAll" },
+  { value: "detected", label: "journal.filterDetected" },
+  { value: "updates", label: "journal.filterUpdates" },
+  { value: "checks", label: "journal.filterChecks" },
+  { value: "problems", label: "journal.filterProblems" },
 ];
 
 interface JournalMeta {
@@ -609,49 +619,49 @@ function renderJournal(): string {
 
   const head = `<header class="view-head">
     <div class="view-head-copy">
-      <div class="eyebrow">Registro</div>
-      <h1 class="display">${all.length === 0 ? "Sin actividad todavía" : "Qué ha pasado"}</h1>
-      <p class="lead">${all.length === 0 ? "Cada comprobación, cada actualización y cada doctor se anotan aquí y se guardan en disco." : `${all.length} ${plural(all.length, "evento", "eventos")} · desde ${relativeTime(oldest)} · guardado en ${esc(fileName)}`}</p>
+      <div class="eyebrow">${t("nav.log")}</div>
+      <h1 class="display">${all.length === 0 ? t("journal.emptyTitle") : t("journal.title")}</h1>
+      <p class="lead">${all.length === 0 ? t("journal.emptyLead") : tn("journal.lead", all.length, { since: relativeTime(oldest), file: esc(fileName) })}</p>
     </div>
     <div class="journal-stats">
-      <span class="journal-stat"><strong>${all.length}</strong><em>${plural(all.length, "evento", "eventos")}</em></span>
-      <span class="journal-stamp">Último · ${relativeTime(newest)}</span>
+      <span class="journal-stat"><strong>${all.length}</strong><em>${t("journal.events", { count: all.length })}</em></span>
+      <span class="journal-stamp">${t("journal.last", { time: relativeTime(newest) })}</span>
     </div>
   </header>`;
 
   const toolbar = `<div class="toolbar journal-toolbar">
-    <button class="btn btn-primary" data-action="check" ${state.checking ? "disabled" : ""}>${icons.refresh}<span>${state.checking ? "Comprobando…" : "Comprobar"}</span></button>
-    <button class="btn" data-action="journal-copy" ${all.length === 0 ? "disabled" : ""}>${icons.copy}<span>Copiar</span></button>
+    <button class="btn btn-primary" data-action="check" ${state.checking ? "disabled" : ""}>${icons.refresh}<span>${state.checking ? t("rail.checking") : t("journal.check")}</span></button>
+    <button class="btn" data-action="journal-copy" ${all.length === 0 ? "disabled" : ""}>${icons.copy}<span>${t("action.copy")}</span></button>
     <button class="btn ${state.journalClearArmed ? "btn-danger" : "btn-ghost"}" data-action="journal-clear" ${all.length === 0 ? "disabled" : ""}>
-      ${icons.x}<span>${state.journalClearArmed ? "Confirmar vaciado" : "Vaciar"}</span>
+      ${icons.x}<span>${state.journalClearArmed ? t("journal.confirmClear") : t("journal.clear")}</span>
     </button>
-    <span class="toolbar-hint">${state.journalClearArmed ? "Pulsa otra vez para borrar todo el historial" : entries.length === all.length ? "" : `${entries.length} de ${all.length}`}</span>
+    <span class="toolbar-hint">${state.journalClearArmed ? t("journal.clearArmedHint") : entries.length === all.length ? "" : t("journal.filtered", { shown: entries.length, total: all.length })}</span>
   </div>`;
 
   const controls = `<div class="journal-controls">
-    <div class="segmented journal-filters" role="group" aria-label="Filtrar el registro">
+    <div class="segmented journal-filters" role="group" aria-label="${t("journal.filterLabel")}">
       ${JOURNAL_FILTERS.map(
         (filter) => `<button class="segment ${state.journalFilter === filter.value ? "is-active" : ""}"
           data-action="journal-filter" data-value="${filter.value}"
-          aria-pressed="${state.journalFilter === filter.value}">${filter.label}</button>`,
+          aria-pressed="${state.journalFilter === filter.value}">${t(filter.label)}</button>`,
       ).join("")}
     </div>
     <div class="journal-search">
       <input class="search-input" type="search" data-role="journal-search"
-        placeholder="Buscar en el registro…"
-        value="${esc(state.journalQuery)}" aria-label="Filtrar el registro"/>
-      <button class="btn btn-small" data-action="journal-search">Filtrar</button>
-      ${state.journalQuery ? `<button class="btn btn-ghost btn-small" data-action="journal-search-clear">Limpiar</button>` : ""}
+        placeholder="${t("journal.searchPlaceholder")}"
+        value="${esc(state.journalQuery)}" aria-label="${t("journal.filterLabel")}"/>
+      <button class="btn btn-small" data-action="journal-search">${t("journal.filterButton")}</button>
+      ${state.journalQuery ? `<button class="btn btn-ghost btn-small" data-action="journal-search-clear">${t("action.clear")}</button>` : ""}
     </div>
   </div>`;
 
   let body: string;
   if (all.length === 0) {
     body = `<div class="empty-state small">${icons.journal}
-      <p class="lead">Todavía no hay nada anotado. La primera comprobación deja aquí su resultado.</p>
+      <p class="lead">${t("journal.noEntries")}</p>
     </div>`;
   } else if (entries.length === 0) {
-    body = `<div class="empty-state small"><p class="lead">Ningún evento coincide con el filtro.</p></div>`;
+    body = `<div class="empty-state small"><p class="lead">${t("journal.noMatches")}</p></div>`;
   } else {
     body = journalDays(entries);
   }
@@ -674,7 +684,7 @@ function journalDays(entries: JournalEntry[]): string {
       ([key, list]) => `<section class="card journal-day">
       <header class="card-head">
         <h2 class="card-title">${esc(dayLabel(key))}</h2>
-        <span class="card-meta">${list.length} ${plural(list.length, "evento", "eventos")}</span>
+        <span class="card-meta">${list.length} ${t("journal.events", { count: list.length })}</span>
       </header>
       <div class="journal-rows">${list.map(journalRow).join("")}</div>
     </section>`,
@@ -688,17 +698,18 @@ function journalRow(entry: JournalEntry): string {
   // Streamed output keeps its own compact shape: no icon, no emphasis.
   if (entry.kind === "output") {
     return `<div class="jrow jrow--output is-output">${time}
-      <div class="jcopy"><span class="jline mono">${esc(entry.title)}</span></div>
+      <div class="jcopy"><span class="jline mono">${esc(journalTitle(entry))}</span></div>
     </div>`;
   }
 
   const meta = journalMeta(entry.kind);
+  const detail = journalDetail(entry);
   return `<div class="jrow jrow--${entry.kind}">
     ${time}
     <span class="jicon tone--${meta.tone}">${meta.icon}</span>
     <div class="jcopy">
-      <span class="jtitle">${esc(entry.title)}</span>
-      ${entry.detail ? `<span class="jdetail">${esc(entry.detail)}</span>` : ""}
+      <span class="jtitle">${esc(journalTitle(entry))}</span>
+      ${detail ? `<span class="jdetail">${esc(detail)}</span>` : ""}
     </div>
   </div>`;
 }
@@ -708,62 +719,74 @@ function journalRow(entry: JournalEntry): string {
 // ---------------------------------------------------------------------------
 
 const INTERVALS: Array<{ minutes: number; label: string }> = [
-  { minutes: 15, label: "15 min" },
-  { minutes: 60, label: "1 h" },
-  { minutes: 180, label: "3 h" },
-  { minutes: 360, label: "6 h" },
-  { minutes: 720, label: "12 h" },
-  { minutes: 1440, label: "24 h" },
-  { minutes: 0, label: "Manual" },
+  { minutes: 15, label: "settings.interval15" },
+  { minutes: 60, label: "settings.interval1h" },
+  { minutes: 180, label: "settings.interval3h" },
+  { minutes: 360, label: "settings.interval6h" },
+  { minutes: 720, label: "settings.interval12h" },
+  { minutes: 1440, label: "settings.interval24h" },
+  { minutes: 0, label: "settings.manual" },
 ];
 
 const AUTOMATION: Array<{ value: "notify" | "confirm" | "auto"; title: string; body: string }> = [
-  { value: "notify", title: "Avisar", body: "Notificación y distintivo en la bandeja. No instala nada." },
-  { value: "confirm", title: "Confirmar", body: "Abre el panel con el lote preparado y espera tu clic." },
-  { value: "auto", title: "Automático", body: "Aplica las novedades en cuanto las detecta. Después pasa el doctor." },
+  {
+    value: "notify",
+    title: "settings.automationNotify",
+    body: "settings.automationNotifyBody",
+  },
+  {
+    value: "confirm",
+    title: "settings.automationConfirm",
+    body: "settings.automationConfirmBody",
+  },
+  {
+    value: "auto",
+    title: "settings.automationAuto",
+    body: "settings.automationAutoBody",
+  },
 ];
 
 function renderSettings(): string {
   const config = state.config;
-  if (!config) return `<section class="content"><div class="empty-state"><p class="lead">Cargando ajustes…</p></div></section>`;
+  if (!config) return `<section class="content"><div class="empty-state"><p class="lead">${t("settings.loading")}</p></div></section>`;
 
   return `<section class="content settings">
     <header class="view-head">
       <div class="view-head-copy">
-        <div class="eyebrow">Ajustes</div>
-        <h1 class="display">Cómo vigila</h1>
-        <p class="lead">La comprobación corre en segundo plano; aquí decides cada cuánto y qué hace al encontrar novedades.</p>
+        <div class="eyebrow">${t("nav.settings")}</div>
+        <h1 class="display">${t("settings.title")}</h1>
+        <p class="lead">${t("settings.lead")}</p>
       </div>
     </header>
 
     <section class="card">
-      <header class="card-head"><h2 class="card-title">Frecuencia</h2><span class="card-meta">${config.intervalMinutes === 0 ? "solo manual" : `cada ${labelFor(config.intervalMinutes)}`}</span></header>
-      <div class="segmented" role="group" aria-label="Frecuencia de comprobación">
+      <header class="card-head"><h2 class="card-title">${t("settings.frequency")}</h2><span class="card-meta">${config.intervalMinutes === 0 ? t("settings.manualOnly") : t("settings.every", { interval: labelFor(config.intervalMinutes) })}</span></header>
+      <div class="segmented" role="group" aria-label="${t("settings.frequencyLabel")}">
         ${INTERVALS.map((option) => `<button class="segment ${config.intervalMinutes === option.minutes ? "is-active" : ""}"
           data-action="set-interval" data-minutes="${option.minutes}"
-          aria-pressed="${config.intervalMinutes === option.minutes}">${option.label}</button>`).join("")}
+          aria-pressed="${config.intervalMinutes === option.minutes}">${t(option.label)}</button>`).join("")}
       </div>
     </section>
 
     <section class="card">
-      <header class="card-head"><h2 class="card-title">Al encontrar novedades</h2></header>
+      <header class="card-head"><h2 class="card-title">${t("settings.onNewVersions")}</h2></header>
       <div class="radio-cards">
         ${AUTOMATION.map((option) => `<button class="radio-card ${config.automation === option.value ? "is-active" : ""}"
           data-action="set-automation" data-value="${option.value}" role="radio" aria-checked="${config.automation === option.value}">
           <span class="radio-dot" aria-hidden="true"></span>
-          <span class="radio-title">${option.title}</span>
-          <span class="radio-body">${option.body}</span>
+          <span class="radio-title">${t(option.title)}</span>
+          <span class="radio-body">${t(option.body)}</span>
         </button>`).join("")}
       </div>
     </section>
 
     <section class="card">
-      <header class="card-head"><h2 class="card-title">Comportamiento</h2></header>
+      <header class="card-head"><h2 class="card-title">${t("settings.behaviour")}</h2></header>
       <div class="switches">
-        ${switchRow("Avisar con notificación", "Un toast de Windows cuando aparezca una versión nueva.", "notifyOnUpdate", config.notifyOnUpdate, "toggle-config")}
-        ${switchRow("Ejecutar doctor tras actualizar", "Verifica la instalación en cuanto termina el lote.", "doctorAfterUpdate", config.doctorAfterUpdate, "toggle-config")}
-        ${switchRow("Arrancar minimizado", "Al iniciar con Windows, directo a la bandeja.", "startMinimized", config.startMinimized, "toggle-config")}
-        ${switchRow("Arrancar con Windows", "Registro de usuario (HKCU). No requiere permisos de administrador.", "autostart", state.autostart, "toggle-autostart")}
+        ${switchRow(t("settings.notifyTitle"), t("settings.notifyBody"), "notifyOnUpdate", config.notifyOnUpdate, "toggle-config")}
+        ${switchRow(t("settings.doctorAfterUpdateTitle"), t("settings.doctorAfterUpdateBody"), "doctorAfterUpdate", config.doctorAfterUpdate, "toggle-config")}
+        ${switchRow(t("settings.startMinimizedTitle"), t("settings.startMinimizedBody"), "startMinimized", config.startMinimized, "toggle-config")}
+        ${switchRow(t("settings.autostartTitle"), t("settings.autostartBody"), "autostart", state.autostart, "toggle-autostart")}
       </div>
     </section>
 
@@ -792,7 +815,7 @@ function switchRow(
 }
 
 function labelFor(minutes: number): string {
-  return INTERVALS.find((option) => option.minutes === minutes)?.label ?? `${minutes} min`;
+  return t(INTERVALS.find((option) => option.minutes === minutes)?.label ?? `${minutes} min`);
 }
 
 function renderIgnoredCard(): string {
@@ -803,7 +826,7 @@ function renderIgnoredCard(): string {
     const groupItems = all.filter((item) => item.kind === group.kind);
     if (groupItems.length === 0) return "";
     return `<div class="ignore-group">
-      <div class="eyebrow group-label">${group.label}</div>
+      <div class="eyebrow group-label">${t(group.label)}</div>
       ${groupItems
         .map(
           (item) => `<div class="ignore-row">
@@ -812,8 +835,8 @@ function renderIgnoredCard(): string {
               <span class="ignore-source">${esc(sourceLabel(item.source))}</span>
             </span>
             <button class="switch ${item.ignored ? "is-on" : ""}" role="switch"
-              aria-checked="${item.ignored}" aria-label="Ignorar ${esc(item.name)}"
-              title="${item.ignored ? "Dejar de ignorar" : "Ignorar"}"
+              aria-checked="${item.ignored}" aria-label="${t("action.ignoreName", { name: esc(item.name) })}"
+              title="${item.ignored ? t("action.unignore") : t("action.ignore")}"
               data-action="toggle-ignored" data-id="${esc(item.id)}">
               <span class="knob"></span>
             </button>
@@ -825,11 +848,11 @@ function renderIgnoredCard(): string {
 
   return `<section class="card">
     <header class="card-head">
-      <h2 class="card-title">Piezas ignoradas</h2>
-      <span class="card-meta">${ignoredCount} ${plural(ignoredCount, "ignorada", "ignoradas")}</span>
+      <h2 class="card-title">${t("settings.ignoredTitle")}</h2>
+      <span class="card-meta">${ignoredCount} ${t("settings.ignoredCount", { count: ignoredCount })}</span>
     </header>
-    <p class="card-help">Se siguen listando para que puedas revertirlo, pero no cuentan como pendientes, no avisan y no se actualizan. Tampoco se consulta su versión publicada.</p>
-    ${all.length === 0 ? `<div class="notes-empty"><p>Comprueba primero para ver las piezas instaladas.</p></div>` : `<div class="ignore-groups">${groups}</div>`}
+    <p class="card-help">${t("settings.ignoredHelp")}</p>
+    ${all.length === 0 ? `<div class="notes-empty"><p>${t("settings.ignoredEmpty")}</p></div>` : `<div class="ignore-groups">${groups}</div>`}
   </section>`;
 }
 
@@ -850,10 +873,10 @@ function renderDoctorRulesCard(): string {
       return `<div class="ignore-row">
         <span class="ignore-copy">
           <span class="ignore-name mono">${esc(id)}</span>
-          <span class="ignore-source">${check ? esc(check.message.slice(0, 100)) : "sin datos en el último informe"}</span>
+          <span class="ignore-source">${check ? esc(check.message.slice(0, 100)) : t("settings.doctorRuleNoData")}</span>
         </span>
         <button class="switch ${ignored ? "is-on" : ""}" role="switch" aria-checked="${ignored}"
-          aria-label="Ignorar ${esc(id)}" title="${ignored ? "Dejar de ignorar" : "Ignorar"}"
+          aria-label="${t("action.ignoreName", { name: esc(id) })}" title="${ignored ? t("action.unignore") : t("action.ignore")}"
           data-action="toggle-doctor-ignore" data-id="${esc(id)}"><span class="knob"></span></button>
       </div>`;
     })
@@ -861,22 +884,22 @@ function renderDoctorRulesCard(): string {
 
   return `<section class="card">
     <header class="card-head">
-      <h2 class="card-title">Reglas del doctor</h2>
-      <span class="card-meta">${config.doctorIgnored.length} ${plural(config.doctorIgnored.length, "silenciada", "silenciadas")}</span>
+      <h2 class="card-title">${t("settings.doctorRules")}</h2>
+      <span class="card-meta">${config.doctorIgnored.length} ${t("doctor.silencedCount", { count: config.doctorIgnored.length })}</span>
     </header>
-    <p class="card-help">Silencia comprobaciones concretas de <span class="mono">gentle-ai doctor</span>. Dejan de contar para el estado, pero siguen consultables en un desplegable.</p>
+    <p class="card-help">${t("settings.doctorRulesHelpBefore")} <span class="mono">gentle-ai doctor</span>. ${t("settings.doctorRulesHelpAfter")}</p>
     <div class="switches">
       <div class="switch-row">
         <div class="switch-copy">
-          <span class="switch-title">Ignorar herramientas deshabilitadas</span>
-          <span class="switch-body">Si el ecosistema informa que una herramienta no está instalada (por ejemplo, gga deshabilitado), se oculta en Resumen y su check <span class="mono">tool:*</span> deja de contar en Doctor.</span>
+          <span class="switch-title">${t("settings.ignoreToolsTitle")}</span>
+          <span class="switch-body">${t("settings.ignoreToolsBodyBefore")} <span class="mono">tool:*</span> ${t("settings.ignoreToolsBodyAfter")}</span>
         </div>
         <button class="switch ${config.ignoreMissingTools ? "is-on" : ""}" role="switch"
-          aria-checked="${config.ignoreMissingTools}" aria-label="Ignorar herramientas no instaladas"
+          aria-checked="${config.ignoreMissingTools}" aria-label="${t("settings.ignoreToolsLabel")}"
           data-action="toggle-config" data-key="ignoreMissingTools"><span class="knob"></span></button>
       </div>
     </div>
-    ${rows ? `<div class="ignore-groups">${rows}</div>` : `<div class="notes-empty"><p>Ejecuta el doctor una vez para listar sus comprobaciones.</p></div>`}
+    ${rows ? `<div class="ignore-groups">${rows}</div>` : `<div class="notes-empty"><p>${t("settings.doctorRulesEmpty")}</p></div>`}
   </section>`;
 }
 
@@ -886,17 +909,17 @@ function renderTranslationCard(): string {
 
   return `<section class="card">
     <header class="card-head">
-      <h2 class="card-title">Traducción de notas</h2>
-      <span class="card-meta">${config.translationEnabled ? "activada" : "desactivada"}</span>
+      <h2 class="card-title">${t("settings.translationTitle")}</h2>
+      <span class="card-meta">${config.translationEnabled ? t("settings.enabled") : t("settings.disabled")}</span>
     </header>
     <div class="switches">
       <div class="switch-row">
         <div class="switch-copy">
-          <span class="switch-title">Traducir las notas</span>
-          <span class="switch-body">Al abrir las notas de una pieza verás el botón Traducir / Ver original.</span>
+          <span class="switch-title">${t("settings.translateNotes")}</span>
+          <span class="switch-body">${t("settings.translateNotesBody")}</span>
         </div>
         <button class="switch ${config.translationEnabled ? "is-on" : ""}" role="switch"
-          aria-checked="${config.translationEnabled}" aria-label="Traducir las notas"
+          aria-checked="${config.translationEnabled}" aria-label="${t("settings.translateNotes")}"
           data-action="toggle-config" data-key="translationEnabled"><span class="knob"></span></button>
       </div>
     </div>
@@ -907,9 +930,9 @@ function renderNotesSearch(): string {
   const search = state.notesSearch;
   const results = search
     ? search.busy
-      ? `<p class="search-status">Buscando…</p>`
+      ? `<p class="search-status">${t("overview.searchBusy")}</p>`
       : search.hits.length === 0
-        ? `<p class="search-status">Sin coincidencias en las notas ya descargadas.</p>`
+        ? `<p class="search-status">${t("overview.searchNoHits")}</p>`
         : `<ul class="search-results">${search.hits
             .map(
               (hit) => `<li>
@@ -928,10 +951,10 @@ function renderNotesSearch(): string {
   return `<section class="card search-card">
     <div class="search-row">
       <input class="search-input" type="search" data-role="notes-search"
-        placeholder="Buscar en las notas de todos los productos…"
-        value="${esc(search?.query ?? "")}" aria-label="Buscar en las notas"/>
-      <button class="btn btn-small" data-action="notes-search">Buscar</button>
-      ${search ? `<button class="btn btn-ghost btn-small" data-action="notes-search-clear">Limpiar</button>` : ""}
+        placeholder="${t("overview.searchPlaceholder")}"
+        value="${esc(search?.query ?? "")}" aria-label="${t("overview.searchLabel")}"/>
+      <button class="btn btn-small" data-action="notes-search">${t("action.search")}</button>
+      ${search ? `<button class="btn btn-ghost btn-small" data-action="notes-search-clear">${t("action.clear")}</button>` : ""}
     </div>
     ${results}
   </section>`;

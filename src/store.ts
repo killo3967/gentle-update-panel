@@ -19,7 +19,8 @@ import type {
   NoteHit,
   Release,
 } from "./types";
-import { isActionable } from "./ui/format";
+import { isActionable, journalDetail, journalTitle } from "./ui/format";
+import { setLocale, t, tn, translateError } from "./i18n";
 
 export type View = "overview" | "doctor" | "log" | "settings";
 
@@ -202,7 +203,7 @@ export function journalEntries(): JournalEntry[] {
   return [...state.journal].reverse().filter((entry) => {
     if (kinds && !kinds.includes(entry.kind)) return false;
     if (query.length === 0) return true;
-    const haystack = `${entry.title} ${entry.detail ?? ""} ${entry.itemId ?? ""}`;
+    const haystack = `${journalTitle(entry)} ${journalDetail(entry) ?? ""} ${entry.itemId ?? ""}`;
     return haystack.toLowerCase().includes(query);
   });
 }
@@ -212,8 +213,8 @@ export function journalEntries(): JournalEntry[] {
 export function journalText(): string {
   return state.journal
     .map((entry) => {
-      const detail = entry.detail ? ` — ${entry.detail}` : "";
-      return `${entry.at}  ${entry.kind}  ${entry.title}${detail}`;
+      const detail = journalDetail(entry);
+      return `${entry.at}  ${entry.kind}  ${journalTitle(entry)}${detail ? ` — ${detail}` : ""}`;
     })
     .join("\n");
 }
@@ -242,9 +243,9 @@ export async function clearJournal(): Promise<void> {
   try {
     await api.clearJournal();
     setState({ journal: [] });
-    toast("Registro vaciado", "ok");
+    toast(t("toast.journalCleared"), "ok");
   } catch (error) {
-    toast(`No se pudo vaciar el registro: ${String(error)}`, "error");
+    toast(t("toast.journalClearFailed", { error: translateError(error) }), "error");
   }
 }
 
@@ -299,7 +300,7 @@ export async function init(): Promise<void> {
       events.journal((entry) => appendJournal(entry)),
       events.panelUpdate((update) => {
         setState({ panelUpdate: update });
-        if (update) toast(`Panel ${update.latest} disponible`, "info");
+        if (update) toast(t("panel.available", { version: update.latest }), "info");
       }),
       events.panelProgress((received, total) =>
         setState({ panelReceived: received, panelTotal: total }),
@@ -307,7 +308,7 @@ export async function init(): Promise<void> {
       events.panelApplying(() => setState({ panelBusy: true, view: "overview" })),
       events.panelError((message) => {
         setState({ panelBusy: false });
-        toast(`No se pudo actualizar el panel: ${message}`, "error");
+        toast(t("toast.panelFailed", { error: message }), "error");
       }),
     ]);
 
@@ -334,6 +335,9 @@ export async function init(): Promise<void> {
       status.config.lastView === "settings"
         ? status.config.lastView
         : "overview";
+
+    // The dictionary is chosen once, from the system language, before rendering.
+    setLocale(status.locale);
 
     setState({
       booted: true,
@@ -363,7 +367,7 @@ export async function init(): Promise<void> {
     if (stale) void check();
   } catch (error) {
     setState({ booted: true });
-    toast(`No se pudo leer el estado: ${String(error)}`, "error");
+    toast(t("toast.stateFailed", { error: translateError(error) }), "error");
   }
 }
 
@@ -374,13 +378,13 @@ export function dispose(): void {
 
 export async function check(): Promise<void> {
   if (state.checking) return;
-  setState({ checking: true, progress: "Iniciando comprobación…" });
+  setState({ checking: true, progress: t("progress.checkStart") });
   try {
     const snapshot = await api.check();
     setState({ snapshot, checking: false, progress: "" });
   } catch (error) {
     setState({ checking: false, progress: "" });
-    toast(`La comprobación falló: ${String(error)}`, "error");
+    toast(t("toast.checkFailed", { error: translateError(error) }), "error");
   }
 }
 
@@ -392,7 +396,7 @@ export async function runDoctor(): Promise<void> {
     setState({ doctor, doctorRunning: false });
   } catch (error) {
     setState({ doctorRunning: false });
-    toast(`El doctor falló: ${String(error)}`, "error");
+    toast(t("toast.doctorFailed", { error: translateError(error) }), "error");
   }
 }
 
@@ -421,7 +425,7 @@ export async function runPiHealth(): Promise<void> {
     setState({ piHealth, piHealthRunning: false });
   } catch (error) {
     setState({ piHealthRunning: false });
-    toast(`La comprobación de pi falló: ${String(error)}`, "error");
+    toast(t("toast.piHealthFailed", { error: translateError(error) }), "error");
   }
 }
 
@@ -438,7 +442,7 @@ export async function applyPanelUpdate(): Promise<void> {
     await api.applyPanelUpdate();
   } catch (error) {
     setState({ panelBusy: false });
-    toast(`No se pudo actualizar el panel: ${String(error)}`, "error");
+    toast(t("toast.panelFailed", { error: translateError(error) }), "error");
   }
 }
 
@@ -455,7 +459,7 @@ export async function refreshBlockers(): Promise<void> {
 export async function requestApply(ids: string[]): Promise<void> {
   if (state.applying) return;
   if (ids.length === 0) {
-    toast("No hay nada seleccionado", "info");
+    toast(t("toast.nothingSelected"), "info");
     return;
   }
 
@@ -495,7 +499,7 @@ export async function confirmPreflight(): Promise<void> {
   const ids = [...state.preflightSelected];
   setState({ preflight: null, preflightSelected: new Set<string>() });
   if (ids.length === 0) {
-    toast("No hay ninguna pieza seleccionada", "info");
+    toast(t("toast.nothingPicked"), "info");
     return;
   }
   await apply(ids);
@@ -508,7 +512,7 @@ export function cancelPreflight(): void {
 export async function apply(ids: string[]): Promise<void> {
   if (state.applying) return;
   if (ids.length === 0) {
-    toast("No hay nada seleccionado", "info");
+    toast(t("toast.nothingSelected"), "info");
     return;
   }
 
@@ -518,7 +522,7 @@ export async function apply(ids: string[]): Promise<void> {
     settle(outcome);
   } catch (error) {
     setState({ applying: false });
-    toast(`No se pudo actualizar: ${String(error)}`, "error");
+    toast(t("toast.applyFailed", { error: translateError(error) }), "error");
   }
 }
 
@@ -533,16 +537,16 @@ function settle(outcome: ApplyOutcome): void {
 
   if (outcome.failed.length > 0) {
     toast(
-      `${outcome.applied.length} aplicadas, ${outcome.failed.length} con error`,
+      t("toast.applyPartial", {
+        applied: outcome.applied.length,
+        failed: outcome.failed.length,
+      }),
       "error",
     );
   } else if (outcome.applied.length > 0) {
-    toast(
-      `${outcome.applied.length} ${outcome.applied.length === 1 ? "actualización aplicada" : "actualizaciones aplicadas"}`,
-      "ok",
-    );
+    toast(tn("toast.applied", outcome.applied.length), "ok");
   } else {
-    toast("No se aplicó ningún cambio", "info");
+    toast(t("toast.noChanges"), "info");
   }
 }
 
@@ -601,7 +605,7 @@ export function toggleIgnored(id: string): void {
   void api
     .saveConfig(config)
     .then((saved) => setState({ config: saved }))
-    .catch((error) => toast(`No se pudo guardar: ${String(error)}`, "error"));
+    .catch((error) => toast(t("toast.saveFailed", { error: translateError(error) }), "error"));
 }
 
 export function toggleSelection(id: string): void {
@@ -631,7 +635,7 @@ export async function saveConfig(patch: Partial<Config>): Promise<void> {
       void refreshDoctorView();
     }
   } catch (error) {
-    toast(`No se pudo guardar: ${String(error)}`, "error");
+    toast(t("toast.saveFailed", { error: translateError(error) }), "error");
   }
 }
 
@@ -639,9 +643,12 @@ export async function toggleAutostart(enabled: boolean): Promise<void> {
   try {
     const autostart = await api.setAutostart(enabled);
     setState({ autostart });
-    toast(autostart ? "Arranque con Windows activado" : "Arranque con Windows desactivado", "ok");
+    toast(
+      autostart ? t("toast.autostartOn") : t("toast.autostartOff"),
+      "ok",
+    );
   } catch (error) {
-    toast(`No se pudo cambiar el arranque: ${String(error)}`, "error");
+    toast(t("toast.autostartFailed", { error: translateError(error) }), "error");
   }
 }
 
@@ -759,7 +766,7 @@ export async function searchNotes(query: string): Promise<void> {
     setState({ notesSearch: { query: trimmed, hits, busy: false } });
   } catch (error) {
     setState({ notesSearch: { query: trimmed, hits: [], busy: false } });
-    toast(`La búsqueda falló: ${String(error)}`, "error");
+    toast(t("toast.searchFailed", { error: translateError(error) }), "error");
   }
 }
 
@@ -770,7 +777,7 @@ export function clearNotesSearch(): void {
 export function openHit(hit: NoteHit): void {
   const item = items().find((candidate) => candidate.notesKey === hit.notesKey);
   if (!item) {
-    toast(`No hay ninguna pieza para ${hit.notesKey}`, "info");
+    toast(t("toast.noItemForNotes", { key: hit.notesKey }), "info");
     return;
   }
   setState({
@@ -792,7 +799,7 @@ export async function openUrl(url: string): Promise<void> {
   try {
     await api.openUrl(url);
   } catch (error) {
-    toast(`No se pudo abrir el enlace: ${String(error)}`, "error");
+    toast(t("toast.openUrlFailed", { error: translateError(error) }), "error");
   }
 }
 

@@ -172,6 +172,8 @@ pub async fn refresh(app: &AppHandle) {
             kind::PANEL,
             format!("Nueva versión del panel: {}", update.latest),
         )
+        .key("journal.panel.found")
+        .arg("version", update.latest.clone())
         .detail(format!("{} → {}", update.current, update.latest)),
     );
 
@@ -180,8 +182,11 @@ pub async fn refresh(app: &AppHandle) {
         let _ = app
             .notification()
             .builder()
-            .title(format!("Panel {} disponible", update.latest))
-            .body("Se actualiza desde la bandeja o el panel.".to_string())
+            .title(crate::i18n::t_args(
+                "notify.panel.title",
+                &[("version", &update.latest)],
+            ))
+            .body(crate::i18n::t("notify.panel.body").to_string())
             .show();
     }
 }
@@ -192,7 +197,7 @@ pub async fn apply(app: &AppHandle) -> Result<(), String> {
     let state = app.state::<AppState>();
     let update = state
         .panel_update()
-        .ok_or_else(|| "no hay una versión nueva del panel".to_string())?;
+        .ok_or_else(|| "error.panel.none".to_string())?;
 
     let directory = app
         .path()
@@ -217,6 +222,8 @@ pub async fn apply(app: &AppHandle) -> Result<(), String> {
             kind::PANEL,
             format!("Actualizando el panel a {}", update.latest),
         )
+        .key("journal.panel.applying")
+        .arg("version", update.latest.clone())
         .detail(format!("instalador {}", installer.display())),
     );
 
@@ -250,7 +257,7 @@ async fn download(app: &AppHandle, update: &PanelUpdate, target: &Path) -> Resul
         .map_err(|error| error.to_string())?;
 
     if !response.status().is_success() {
-        return fail(app, &format!("la descarga respondió {}", response.status()));
+        return fail(app, &format!("error.panel.download|status={}", response.status()));
     }
 
     let total = if update.size > 0 {
@@ -268,7 +275,7 @@ async fn download(app: &AppHandle, update: &PanelUpdate, target: &Path) -> Resul
         let chunk = match response.chunk().await {
             Ok(Some(chunk)) => chunk,
             Ok(None) => break,
-            Err(error) => return fail(app, &format!("descarga interrumpida: {error}")),
+            Err(error) => return fail(app, &format!("error.panel.interrupted|detail={error}")),
         };
         file.write_all(&chunk).map_err(|error| error.to_string())?;
         received += chunk.len() as u64;
@@ -298,19 +305,16 @@ async fn download(app: &AppHandle, update: &PanelUpdate, target: &Path) -> Resul
 fn verify_installer(path: &Path, expected: u64) -> Result<(), String> {
     let bytes = std::fs::read(path).map_err(|error| error.to_string())?;
     if bytes.len() < MIN_INSTALLER_BYTES as usize {
-        return Err(format!(
-            "el instalador descargado ocupa solo {} bytes",
-            bytes.len()
-        ));
+        return Err(format!("error.panel.tooSmall|bytes={}", bytes.len()));
     }
     if expected > 0 && bytes.len() as u64 != expected {
         return Err(format!(
-            "el instalador ocupa {} bytes y la release anuncia {expected}",
+            "error.panel.sizeMismatch|bytes={}|expected={expected}",
             bytes.len()
         ));
     }
     if &bytes[..2] != b"MZ" {
-        return Err("el archivo descargado no es un ejecutable de Windows".to_string());
+        return Err("error.panel.notExecutable".to_string());
     }
     Ok(())
 }
@@ -401,7 +405,7 @@ fn spawn_helper(script: &Path) -> Result<(), String> {
     #[cfg(not(windows))]
     {
         let _ = script;
-        Err("la actualización automática del panel solo está implementada en Windows".to_string())
+        Err("error.panel.windowsOnly".to_string())
     }
 }
 

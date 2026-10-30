@@ -86,6 +86,8 @@ export interface AppStatus {
   autostart: boolean;
   version: string;
   appDir: string;
+  /** Language tag from the system, e.g. `es`; the UI picks its dictionary from it. */
+  locale: string;
 }
 
 export interface DoctorCheck {
@@ -216,8 +218,14 @@ export interface JournalEntry {
   seq: number;
   at: string;
   kind: JournalKind;
+  /** Frozen text as it was written: the fallback when there is no key. */
   title: string;
   detail: string | null;
   itemId: string | null;
   stream: string | null;
+  /** Translation key for the title, so the history follows the UI language. */
+  titleKey?: string | null;
+  titleArgs?: Record<string, string> | null;
+  detailKey?: string | null;
+  detailArgs?: Record<string, string> | null;
 }

@@ -115,7 +115,9 @@ pub async fn apply(app: &AppHandle, ids: Vec<String>, origin: Origin) -> ApplyOu
         journal::record(
             app,
             Draft::new(kind::FAILED, "No se pudo actualizar")
-                .detail("no hay una comprobación guardada; comprueba de nuevo"),
+                .key("journal.apply.failed")
+                .detail("no hay una comprobación guardada; comprueba de nuevo")
+                .detail_key("journal.apply.failedNoSnapshot"),
         );
         return ApplyOutcome {
             applied: Vec::new(),
@@ -138,7 +140,9 @@ pub async fn apply(app: &AppHandle, ids: Vec<String>, origin: Origin) -> ApplyOu
         journal::record(
             app,
             Draft::new(kind::APPLY, "Nada que actualizar")
-                .detail("la selección no contiene piezas actualizables"),
+                .key("journal.apply.none")
+                .detail("la selección no contiene piezas actualizables")
+                .detail_key("journal.apply.noneDetail"),
         );
         return ApplyOutcome {
             applied,
@@ -157,6 +161,10 @@ pub async fn apply(app: &AppHandle, ids: Vec<String>, origin: Origin) -> ApplyOu
                 Origin::Auto => "Actualización automática",
             },
         )
+        .key(match origin {
+            Origin::Manual => "journal.apply.manual",
+            Origin::Auto => "journal.apply.auto",
+        })
         .detail(batch_detail(&steps)),
     );
 
@@ -179,6 +187,8 @@ pub async fn apply(app: &AppHandle, ids: Vec<String>, origin: Origin) -> ApplyOu
                     kind::FAILED,
                     format!("{} no se actualiza automáticamente", planned.name),
                 )
+                .key("journal.apply.noAuto")
+                .arg("name", planned.name.clone())
                 .detail(&planned.step.label)
                 .item(&planned.step.id),
             );
@@ -266,6 +276,8 @@ pub async fn apply(app: &AppHandle, ids: Vec<String>, origin: Origin) -> ApplyOu
                 );
                 let mut draft =
                     Draft::new(kind::APPLIED, format!("{} actualizado", planned.name))
+                        .key("journal.applied")
+                        .arg("name", planned.name.clone())
                         .item(&planned.step.id);
                 if let Some(versions) = &planned.versions {
                     draft = draft.detail(versions);
@@ -312,6 +324,8 @@ pub async fn apply(app: &AppHandle, ids: Vec<String>, origin: Origin) -> ApplyOu
                         kind::FAILED,
                         format!("{} no se pudo actualizar", planned.name),
                     )
+                    .key("journal.apply.failedItem")
+                    .arg("name", planned.name.clone())
                     .detail(&reason)
                     .item(&planned.step.id),
                 );
@@ -329,6 +343,8 @@ pub async fn apply(app: &AppHandle, ids: Vec<String>, origin: Origin) -> ApplyOu
                         kind::FAILED,
                         format!("{} no se pudo actualizar", planned.name),
                     )
+                    .key("journal.apply.failedItem")
+                    .arg("name", planned.name.clone())
                     .detail(&error)
                     .item(&planned.step.id),
                 );
@@ -359,6 +375,8 @@ pub async fn apply(app: &AppHandle, ids: Vec<String>, origin: Origin) -> ApplyOu
                 kind::DOCTOR,
                 format!("Doctor tras actualizar: {}", doctor::status_label(&report.status)),
             )
+            .key("journal.doctor.afterUpdate")
+            .arg("status", report.status.clone())
             .detail(doctor::summary_line(&report)),
         );
         Some(report)
