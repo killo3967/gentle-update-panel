@@ -52,6 +52,8 @@ pub mod kind {
     pub const APPLIED: &str = "applied";
     pub const FAILED: &str = "failed";
     pub const DOCTOR: &str = "doctor";
+    /// The panel's own release: found, then updated.
+    pub const PANEL: &str = "panel";
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

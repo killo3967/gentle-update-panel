@@ -37,6 +37,7 @@ pub fn app_status(app: AppHandle) -> AppStatus {
             doctor::view(&report, &state.config(), state.snapshot().as_ref())
         }),
         pi_health: state.pi_health(),
+        panel_update: state.panel_update(),
         journal: journal::list(&app),
         journal_path: journal::path_string(&app),
         autostart: app.autolaunch().is_enabled().unwrap_or(false),
@@ -80,7 +81,7 @@ pub fn save_config(app: AppHandle, mut config: Config) -> Config {
     if let Some(mut snapshot) = state.snapshot() {
         snapshot.apply_ignored(&config.ignored, config.ignore_missing_tools);
         state.store_snapshot(&snapshot);
-        crate::tray::reflect(&app, &snapshot);
+        crate::tray::reflect(&app);
         let _ = app.emit("snapshot", &snapshot);
     }
 
@@ -226,6 +227,25 @@ pub async fn apply_updates(app: AppHandle, ids: Vec<String>) -> Result<ApplyOutc
         snapshot: Some(snapshot),
         ..outcome
     })
+}
+
+/// Hands the panel's own update to the helper, which waits for this process to
+/// exit before installing. The app comes back already updated.
+#[tauri::command]
+pub async fn apply_panel_update(app: AppHandle) -> Result<(), String> {
+    {
+        let state = app.state::<AppState>();
+        if state.applying.swap(true, Ordering::SeqCst) {
+            return Err("ya hay una actualización en curso".to_string());
+        }
+    }
+    let _guard = ApplyingGuard(app.clone());
+
+    // Nothing else may touch binaries while the installer is being prepared.
+    let lock = app.state::<AppState>().work_lock.clone();
+    let _work = lock.lock().await;
+
+    crate::panel::apply(&app).await
 }
 
 #[tauri::command]

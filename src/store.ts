@@ -10,6 +10,7 @@ import type {
   JournalEntry,
   LogEvent,
   PiHealth,
+  PanelUpdate,
   NotesPayload,
   Snapshot,
   UpdateItem,
@@ -49,6 +50,11 @@ export interface State {
   doctorRunning: boolean;
   piHealth: PiHealth | null;
   piHealthRunning: boolean;
+  panelUpdate: PanelUpdate | null;
+  /** Set while the installer is downloading and the helper is being started. */
+  panelBusy: boolean;
+  panelReceived: number;
+  panelTotal: number;
   notes: Record<string, NotesPayload>;
   notesLoading: Record<string, boolean>;
   translations: Record<string, { text: string; engine: string }>;
@@ -91,6 +97,10 @@ export const state: State = {
   doctorRunning: false,
   piHealth: null,
   piHealthRunning: false,
+  panelUpdate: null,
+  panelBusy: false,
+  panelReceived: 0,
+  panelTotal: 0,
   notes: {},
   notesLoading: {},
   translations: {},
@@ -162,8 +172,8 @@ export function pendingCount(): number {
 
 const JOURNAL_KINDS: Record<JournalFilter, JournalEntry["kind"][] | null> = {
   all: null,
-  detected: ["detected"],
-  updates: ["apply", "step", "output", "applied", "failed"],
+  detected: ["detected", "panel"],
+  updates: ["apply", "step", "output", "applied", "failed", "panel"],
   checks: ["check", "doctor"],
   problems: ["failed", "preflight"],
 };
@@ -257,8 +267,20 @@ export async function init(): Promise<void> {
   if (initialized) return;
   initialized = true;
 
-  const [offSnapshot, offProgress, offLog, offStep, offApplied, offPreselect, offDoctor, offJournal] =
-    await Promise.all([
+  const [
+    offSnapshot,
+    offProgress,
+    offLog,
+    offStep,
+    offApplied,
+    offPreselect,
+    offDoctor,
+    offJournal,
+    offPanel,
+    offPanelProgress,
+    offPanelApplying,
+    offPanelError,
+  ] = await Promise.all([
       events.snapshot((snapshot) => {
         setState({ snapshot });
         void refreshBlockers();
@@ -275,6 +297,18 @@ export async function init(): Promise<void> {
         void runDoctor();
       }),
       events.journal((entry) => appendJournal(entry)),
+      events.panelUpdate((update) => {
+        setState({ panelUpdate: update });
+        if (update) toast(`Panel ${update.latest} disponible`, "info");
+      }),
+      events.panelProgress((received, total) =>
+        setState({ panelReceived: received, panelTotal: total }),
+      ),
+      events.panelApplying(() => setState({ panelBusy: true, view: "overview" })),
+      events.panelError((message) => {
+        setState({ panelBusy: false });
+        toast(`No se pudo actualizar el panel: ${message}`, "error");
+      }),
     ]);
 
   unlisteners.push(
@@ -286,6 +320,10 @@ export async function init(): Promise<void> {
     offPreselect,
     offDoctor,
     offJournal,
+    offPanel,
+    offPanelProgress,
+    offPanelApplying,
+    offPanelError,
   );
 
   try {
@@ -303,6 +341,7 @@ export async function init(): Promise<void> {
       snapshot: status.snapshot,
       doctor: status.doctor,
       piHealth: status.piHealth,
+      panelUpdate: status.panelUpdate ?? null,
       journal: mergeJournal(status.journal ?? [], state.journal),
       journalPath: status.journalPath,
       autostart: status.autostart,
@@ -383,6 +422,23 @@ export async function runPiHealth(): Promise<void> {
   } catch (error) {
     setState({ piHealthRunning: false });
     toast(`La comprobación de pi falló: ${String(error)}`, "error");
+  }
+}
+
+/// Downloads the panel's own installer and hands it to the helper: the app
+/// closes, installs and comes back on its own.
+export async function applyPanelUpdate(): Promise<void> {
+  if (state.panelBusy || !state.panelUpdate) return;
+  setState({
+    panelBusy: true,
+    panelReceived: 0,
+    panelTotal: state.panelUpdate.size,
+  });
+  try {
+    await api.applyPanelUpdate();
+  } catch (error) {
+    setState({ panelBusy: false });
+    toast(`No se pudo actualizar el panel: ${String(error)}`, "error");
   }
 }
 

@@ -8,6 +8,7 @@ import type {
   DoctorView,
   NotesPayload,
   PiHealth,
+  PanelUpdate,
   Blocker,
   PreflightReport,
   NoteHit,
@@ -22,6 +23,7 @@ export const api = {
   doctor: () => invoke<DoctorView>("run_doctor"),
   doctorView: () => invoke<DoctorView | null>("doctor_view"),
   piHealth: () => invoke<PiHealth>("run_pi_health"),
+  applyPanelUpdate: () => invoke<void>("apply_panel_update"),
   apply: (ids: string[]) => invoke<ApplyOutcome>("apply_updates", { ids }),
   notes: (key: string, installed: string | null, latest: string | null, force = false) =>
     invoke<NotesPayload>("get_notes", { key, installed, latest, force }),
@@ -54,4 +56,13 @@ export const events = {
   openDoctor: (handler: () => void) => listen("open-doctor", () => handler()),
   journal: (handler: (entry: JournalEntry) => void) =>
     listen<JournalEntry>("journal:entry", (event) => handler(event.payload)),
+  panelUpdate: (handler: (update: PanelUpdate | null) => void) =>
+    listen<PanelUpdate | null>("panel:update", (event) => handler(event.payload)),
+  panelProgress: (handler: (received: number, total: number) => void) =>
+    listen<{ phase: string; received: number; total: number }>("panel:progress", (event) =>
+      handler(event.payload.received, event.payload.total),
+    ),
+  panelApplying: (handler: () => void) => listen("panel:applying", () => handler()),
+  panelError: (handler: (message: string) => void) =>
+    listen<string>("panel:error", (event) => handler(event.payload)),
 };

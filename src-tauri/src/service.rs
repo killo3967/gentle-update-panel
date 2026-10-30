@@ -32,7 +32,7 @@ pub async fn collect(app: &AppHandle) -> Snapshot {
     if let Some(state) = app.try_state::<AppState>() {
         state.store_snapshot(&snapshot);
     }
-    tray::reflect(app, &snapshot);
+    tray::reflect(app);
     let _ = app.emit("snapshot", &snapshot);
     snapshot
 }
@@ -47,6 +47,9 @@ pub async fn run_check(app: &AppHandle) -> Snapshot {
     let config = app.state::<AppState>().config();
 
     let snapshot = collect(app).await;
+    // The panel's own release is checked in the same cycle, so it lands in the
+    // tray, the notification and the journal like any other piece.
+    crate::panel::refresh(app).await;
     record_summary(app, &snapshot, previous.as_ref(), "Comprobación completada");
     let fresh = snapshot.doctor_hint(previous.as_ref());
 

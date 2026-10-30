@@ -206,6 +206,7 @@ function renderOverview(): string {
 
     ${renderNotesSearch()}
     ${state.blockers.some((blocker) => blocker.kind === "pi") ? renderPiRunningBand() : ""}
+    ${renderPanelBand()}
     ${snapshot.warnings.length > 0 ? renderWarnBand(snapshot.warnings) : ""}
     ${groups}
   </section>`;
@@ -244,6 +245,28 @@ function renderPiRunningBand(): string {
     ${icons.alert}
     <div><strong>pi está en marcha</strong>
     <span>Actualiza pi o sus paquetes cuando cierres la sesión: ahora cambiarían bajo un proceso vivo.</span></div>
+  </div>`;
+}
+
+function renderPanelBand(): string {
+  const update = state.panelUpdate;
+  if (!update) return "";
+
+  if (state.panelBusy) {
+    const total = state.panelTotal || update.size;
+    const percent = total > 0 ? Math.min(100, Math.round((state.panelReceived / total) * 100)) : 0;
+    return `<div class="panel-band is-busy">
+    ${icons.refresh}
+    <div><strong>Instalando el panel ${esc(update.latest)}</strong>
+    <span>${percent}% descargado · el panel se cerrará, se instalará y volverá a abrirse solo.</span></div>
+  </div>`;
+  }
+
+  return `<div class="panel-band">
+    ${icons.arrowRight}
+    <div><strong>Panel ${esc(update.latest)} disponible</strong>
+    <span>Estás en la ${esc(update.current)}. Al actualizar, el panel se cierra, instala y vuelve a abrirse.</span></div>
+    <button class="btn btn-primary btn-small" data-action="apply-panel-update" ${state.applying ? "disabled" : ""}>Actualizar y reiniciar</button>
   </div>`;
 }
 
@@ -567,6 +590,8 @@ function journalMeta(kind: JournalEntry["kind"]): JournalMeta {
       return { icon: icons.alert, tone: "danger" };
     case "doctor":
       return { icon: icons.stethoscope, tone: "faint" };
+    case "panel":
+      return { icon: icons.refresh, tone: "accent" };
     case "check":
       return { icon: icons.refresh, tone: "faint" };
     default:

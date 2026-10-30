@@ -8,6 +8,7 @@ mod health;
 mod journal;
 mod locale;
 mod notes;
+mod panel;
 mod parsers;
 mod probe;
 mod scheduler;
@@ -81,6 +82,7 @@ pub fn run() {
             commands::doctor_view,
             commands::run_pi_health,
             commands::apply_updates,
+            commands::apply_panel_update,
             commands::get_notes,
             commands::set_autostart,
             commands::open_url,

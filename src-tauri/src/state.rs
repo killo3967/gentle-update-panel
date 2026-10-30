@@ -9,6 +9,7 @@ use tauri::{AppHandle, Manager};
 use crate::domain::{Config, DoctorReport, Snapshot};
 use crate::health::PiHealth;
 use crate::journal::Journal;
+use crate::panel::PanelUpdate;
 use crate::translate::TranslationService;
 use crate::notes::NotesService;
 
@@ -18,12 +19,17 @@ pub struct AppState {
     pub doctor: Mutex<Option<DoctorReport>>,
     pub pi_health: Mutex<Option<PiHealth>>,
     pub journal: Mutex<Journal>,
+    /// Newer release of the panel itself, when there is one.
+    pub panel: Mutex<Option<PanelUpdate>>,
+    /// Tray entry that offers that release; disabled while there is none.
+    pub tray_panel_item: Mutex<Option<tauri::menu::MenuItem<tauri::Wry>>>,
     pub notes: Arc<NotesService>,
     pub translations: Arc<TranslationService>,
     pub config_path: PathBuf,
     pub snapshot_path: PathBuf,
     pub doctor_path: PathBuf,
     pub pi_health_path: PathBuf,
+    pub panel_path: PathBuf,
     pub applying: AtomicBool,
     /// Serializes checks and applies: one writer, no reader mid-write.
     pub work_lock: Arc<tokio::sync::Mutex<()>>,
@@ -43,6 +49,7 @@ impl AppState {
         let notes_path = directory.join("notes-cache.json");
         let translations_path = directory.join("translations.json");
         let journal_path = directory.join(crate::journal::FILE_NAME);
+        let panel_path = directory.join("panel.json");
 
         let config = read_json::<Config>(&config_path).unwrap_or_default();
         let mut snapshot = read_json::<Snapshot>(&snapshot_path);
@@ -52,6 +59,7 @@ impl AppState {
         }
         let doctor = read_json::<DoctorReport>(&doctor_path);
         let pi_health = read_json::<PiHealth>(&pi_health_path);
+        let panel = read_json::<PanelUpdate>(&panel_path);
 
         Self {
             config: Mutex::new(config),
@@ -59,12 +67,15 @@ impl AppState {
             doctor: Mutex::new(doctor),
             pi_health: Mutex::new(pi_health),
             journal: Mutex::new(Journal::new(journal_path)),
+            panel: Mutex::new(panel),
+            tray_panel_item: Mutex::new(None),
             notes: Arc::new(NotesService::new(notes_path)),
             translations: Arc::new(TranslationService::new(translations_path)),
             config_path,
             snapshot_path,
             doctor_path,
             pi_health_path,
+            panel_path,
             applying: AtomicBool::new(false),
             work_lock: Arc::new(tokio::sync::Mutex::new(())),
         }
@@ -108,6 +119,25 @@ impl AppState {
             *slot = Some(report.clone());
         }
         let _ = write_json(&self.pi_health_path, report);
+    }
+
+    /// `None` clears the stored update: the release is no longer newer than us.
+    pub fn store_panel_update(&self, update: Option<&PanelUpdate>) {
+        if let Ok(mut slot) = self.panel.lock() {
+            *slot = update.cloned();
+        }
+        match update {
+            Some(update) => {
+                let _ = write_json(&self.panel_path, update);
+            }
+            None => {
+                let _ = std::fs::remove_file(&self.panel_path);
+            }
+        }
+    }
+
+    pub fn panel_update(&self) -> Option<PanelUpdate> {
+        self.panel.lock().ok().and_then(|slot| slot.clone())
     }
 
     pub fn pi_health(&self) -> Option<PiHealth> {

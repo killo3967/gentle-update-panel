@@ -80,6 +80,7 @@ export interface AppStatus {
   snapshot: Snapshot | null;
   doctor: DoctorView | null;
   piHealth: PiHealth | null;
+  panelUpdate: PanelUpdate | null;
   journal: JournalEntry[];
   journalPath: string;
   autostart: boolean;
@@ -196,7 +197,19 @@ export type JournalKind =
   | "output"
   | "applied"
   | "failed"
-  | "doctor";
+  | "doctor"
+  | "panel";
+
+/** A newer release of the panel itself, offered from the tray or the panel. */
+export interface PanelUpdate {
+  current: string;
+  latest: string;
+  asset: string;
+  url: string;
+  size: number;
+  releaseUrl: string;
+  checkedAt: string;
+}
 
 /** One line of the durable journal (`journal.ndjson`), oldest first when listed. */
 export interface JournalEntry {

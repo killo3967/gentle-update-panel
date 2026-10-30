@@ -29,7 +29,8 @@ paquetes de pi (npm y git)      <- pi list + package.json + npm registry
 - **Verifica**: ejecuta `gentle-ai doctor` después de aplicar (configurable) y muestra checks, remedios y salida completa.
 - **Silencia checks del doctor**: en Ajustes → *Reglas del doctor* puedes ignorar comprobaciones concretas por id (`tool:hermes` para siempre) y activar el silencio automático de `tool:*` cuando esa herramienta no está instalada (por ejemplo `gga` deshabilitado). Las silenciadas no cuentan para el estado, pero siguen consultables en un desplegable.
 - **Verifica la instalación de pi**: como pi no tiene `doctor`, el panel comprueba por su cuenta que cada paquete existe en disco, que su `package.json` se lee, que declara versión y que los recursos que anuncia (`pi.extensions`, `pi.skills`, `pi.themes`, `pi.prompts`) existen. Además valida `settings.json` (duplicados) y el árbol npm de extensiones.
-- **Vive en la bandeja**: badge con pendientes, notificación toast, menú (Abrir, Comprobar ahora, Doctor, Salir) y arranque con Windows (HKCU, sin admin).
+- **Vive en la bandeja**: badge con pendientes, notificación toast, menú (Abrir, Comprobar ahora, Doctor, Actualizar el panel, Salir) y arranque con Windows (HKCU, sin admin).
+- **Se actualiza a sí mismo**: cada comprobación mira también la última release de este repositorio. Si hay una versión más nueva, el panel lo dice en la bandeja (*Actualizar el panel a X*), en Resumen y con un aviso; al pulsarlo descarga el instalador, se cierra, lo instala en silencio y se vuelve a abrir solo. No verifica firma: ejecuta el instalador que publica la release de este repo.
 
 ## Uso
 
@@ -78,6 +79,8 @@ Todo se guarda en `%APPDATA%\dev.gentle.update-panel\`:
 | `doctor.json` | último informe del doctor |
 | `journal.ndjson` | registro append-only de comprobaciones, detecciones y actualizaciones (últimos 800 eventos; se compacta solo) |
 | `pi-health.json` | última verificación de instalación de pi y sus paquetes |
+| `panel.json` | última release del propio panel más nueva que la instalada, si la hay |
+| `updates/` | instalador descargado mientras se aplica una actualización del panel |
 | `notes-cache.json` | notas de versión (TTL 6 h; máx. 150 entradas, 3 MB y 45 días) |
 | `translations.json` | traducciones por versión, motor e idioma (máx. 300 entradas, 3 MB y 90 días) |
 

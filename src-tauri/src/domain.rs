@@ -155,6 +155,8 @@ pub struct AppStatus {
     pub snapshot: Option<Snapshot>,
     pub doctor: Option<crate::doctor::DoctorView>,
     pub pi_health: Option<crate::health::PiHealth>,
+    /// A newer release of the panel itself, when there is one.
+    pub panel_update: Option<crate::panel::PanelUpdate>,
     /// What the panel detected and did, oldest first.
     pub journal: Vec<crate::journal::JournalEntry>,
     /// Where the journal lives, so the UI can point at the file.
