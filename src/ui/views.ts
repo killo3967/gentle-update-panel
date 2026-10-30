@@ -747,20 +747,6 @@ function renderSettings(): string {
     ${renderDoctorRulesCard()}
 
     ${renderIgnoredCard()}
-
-    <section class="card">
-      <header class="card-head"><h2 class="card-title">Datos</h2></header>
-      <dl class="data-list">
-        <div><dt>Configuración</dt><dd class="mono">${esc(state.appDir || "—")}</dd></div>
-        <div><dt>Registro</dt><dd class="mono" title="${esc(state.journalPath)}">${esc(state.journalPath || "—")}</dd></div>
-        <div><dt>Versión del panel</dt><dd class="mono">v${esc(state.version || "—")}</dd></div>
-        <div><dt>Comprobación</dt><dd class="mono">${state.checking ? "en curso" : relativeTime(state.snapshot?.checkedAt ?? null)}</dd></div>
-      </dl>
-      <div class="card-actions">
-        <button class="btn" data-action="check" ${state.checking ? "disabled" : ""}>${icons.refresh}<span>Comprobar ahora</span></button>
-        <button class="btn btn-ghost" data-action="doctor">${icons.stethoscope}<span>Ejecutar doctor</span></button>
-      </div>
-    </section>
   </section>`;
 }
 
