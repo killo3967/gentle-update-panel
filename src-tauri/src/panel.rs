@@ -329,13 +329,17 @@ fn write_helper(directory: &Path, installer: &Path, exe: &Path) -> Result<PathBu
         .unwrap_or_else(|| "gentle-update-panel".to_string());
     let script = directory.join("panel-update.ps1");
 
+    // `/R` lets the installer restart the new build itself, which is the path that
+    // gives it a normal window: starting it by hand the instant the installer
+    // returns left the panel hidden with an empty webview. The fallback waits
+    // longer and marks the launch so the app insists on showing itself.
     let body = format!(
         "$ErrorActionPreference = 'SilentlyContinue'\n\
          Wait-Process -Id {pid} -Timeout 120\n\
-         Start-Process -FilePath '{installer}' -ArgumentList '/S' -Wait\n\
-         Start-Sleep -Seconds 1\n\
+         Start-Process -FilePath '{installer}' -ArgumentList '/S','/R' -Wait\n\
+         Start-Sleep -Seconds 4\n\
          if (-not (Get-Process -Name '{image}' -ErrorAction SilentlyContinue)) {{\n\
-         \x20 Start-Process -FilePath '{exe}'\n\
+         \x20 Start-Process -FilePath '{exe}' -ArgumentList '--updated' -WindowStyle Normal\n\
          }}\n\
          Remove-Item -LiteralPath '{script}' -Force\n",
         pid = pid,
@@ -509,6 +513,29 @@ mod tests {
         );
         assert_eq!(sanitize("../../evil.exe"), ".._.._evil.exe");
         assert_eq!(sanitize(""), "panel-setup.exe");
+    }
+
+    #[test]
+    fn the_helper_waits_and_relaunches_through_the_installer() {
+        let directory = std::env::temp_dir().join("gentle-panel-helper-test");
+        std::fs::create_dir_all(&directory).expect("temp dir");
+        let script = write_helper(
+            &directory,
+            Path::new("C:/tmp/Gentle_0.7.1_x64-setup.exe"),
+            Path::new("C:/Apps/gentle-update-panel.exe"),
+        )
+        .expect("script");
+        let body = std::fs::read_to_string(&script).expect("contenido");
+
+        // The installer restarts the app; we only start it if that did not happen,
+        // and then the app is told to insist on showing its window.
+        assert!(body.contains("'/S','/R'"), "{body}");
+        assert!(body.contains("Start-Sleep -Seconds 4"), "{body}");
+        assert!(body.contains("--updated"), "{body}");
+        assert!(body.contains("-WindowStyle Normal"), "{body}");
+        assert!(body.contains("Wait-Process -Id"), "{body}");
+
+        std::fs::remove_dir_all(&directory).ok();
     }
 
     #[test]

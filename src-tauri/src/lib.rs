@@ -61,8 +61,21 @@ pub fn run() {
             );
 
             // Autostart launches with --minimized; a manual launch shows the panel.
-            let minimized = std::env::args().any(|arg| arg == "--minimized");
-            if !minimized {
+            let args: Vec<String> = std::env::args().collect();
+            let minimized = args.iter().any(|arg| arg == "--minimized");
+            let updated = args.iter().any(|arg| arg == "--updated");
+
+            if updated {
+                // The updater restarted us: retry showing the window, so a slow
+                // WebView start cannot leave the panel hidden in the tray.
+                let app = handle.clone();
+                tauri::async_runtime::spawn(async move {
+                    for delay in [400_u64, 1200, 2500] {
+                        tokio::time::sleep(std::time::Duration::from_millis(delay)).await;
+                        tray::show_main(&app);
+                    }
+                });
+            } else if !minimized {
                 tray::show_main(&handle);
             }
 
