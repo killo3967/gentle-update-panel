@@ -1327,7 +1327,7 @@ dependencies = [
 
 [[package]]
 name = "gentle-update-panel"
-version = "0.7.0"
+version = "0.7.1"
 dependencies = [
  "chrono",
  "regex",
