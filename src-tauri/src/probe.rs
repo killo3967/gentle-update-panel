@@ -193,6 +193,8 @@ fn ecosystem_item(row: parsers::ToolRow, ignored: bool) -> UpdateItem {
         _ => None,
     };
 
+    let notes_key = ecosystem_notes_key(&row.name).to_string();
+
     UpdateItem {
         id: row.name.clone(),
         kind: ItemKind::Ecosystem,
@@ -203,8 +205,21 @@ fn ecosystem_item(row: parsers::ToolRow, ignored: bool) -> UpdateItem {
         status,
         detail,
         upgrade: Upgrade::GentleAiTool { tool: row.name },
-        notes_key: Some("gh:Gentleman-Programming/gentle-ai".to_string()),
+        notes_key: Some(notes_key),
         ignored,
+    }
+}
+
+/// Where an ecosystem tool publishes its releases. `gentle-ai update` lists tool
+/// names, not repositories, so this mapping is explicit: a wrong guess shows the
+/// notes of a different tool. Anything unlisted keeps the ecosystem's own notes.
+fn ecosystem_notes_key(tool: &str) -> &'static str {
+    match tool {
+        // The core's repo also publishes the Pi plugin's `pi-v` tags, so `#v`
+        // keeps its own `v3.x` releases and drops the plugin's.
+        "engram" => "gh:Gentleman-Programming/engram#v",
+        "gga" => "gh:Gentleman-Programming/gentleman-guardian-angel",
+        _ => "gh:Gentleman-Programming/gentle-ai",
     }
 }
 
@@ -611,6 +626,28 @@ mod tests {
             notes_key_for("npm:@scope/pkg", None),
             Some("npm:@scope/pkg".to_string()),
             "without metadata the registry page is the honest source"
+        );
+    }
+
+    #[test]
+    fn each_ecosystem_tool_reads_its_own_releases() {
+        assert_eq!(
+            ecosystem_notes_key("engram"),
+            "gh:Gentleman-Programming/engram#v",
+            "the core tags v3.x in a repo that also publishes the plugin's pi-v tags"
+        );
+        assert_eq!(
+            ecosystem_notes_key("gga"),
+            "gh:Gentleman-Programming/gentleman-guardian-angel"
+        );
+        assert_eq!(
+            ecosystem_notes_key("gentle-ai"),
+            "gh:Gentleman-Programming/gentle-ai"
+        );
+        assert_eq!(
+            ecosystem_notes_key("a-tool-nobody-taught-us"),
+            "gh:Gentleman-Programming/gentle-ai",
+            "an unknown tool keeps the ecosystem's own notes instead of guessing"
         );
     }
 

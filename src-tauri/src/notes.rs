@@ -531,6 +531,14 @@ mod tests {
             ],
             "without a family nothing is filtered: only the leading `v` is dropped"
         );
+
+        // The same repo, the other product: `#v` keeps the core's own tags and
+        // drops every `pi-v` one, because the family is stripped first.
+        let core_family: Vec<String> = tags
+            .iter()
+            .filter_map(|tag| release_version_from_tag(tag, Some("v")))
+            .collect();
+        assert_eq!(core_family, vec!["3.6.2", "3.6.1", "3.4.0"]);
     }
 
     #[test]
