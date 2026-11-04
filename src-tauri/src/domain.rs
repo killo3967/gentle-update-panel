@@ -19,7 +19,9 @@ pub struct UpdateItem {
     /// Human hint shown under the row (why it is unknown, what to do).
     pub detail: Option<String>,
     pub upgrade: Upgrade,
-    /// Where release notes come from: `pi:changelog`, `gh:owner/repo`, `npm:name`.
+    /// Where release notes come from: `pi:changelog`, `gh:owner/repo[#tag-family]`,
+    /// `npm:name`. The optional family keeps a multi-product repository from
+    /// opening another product's notes.
     pub notes_key: Option<String>,
     /// Excluded from counters, notifications and batches; still listed so it can
     /// be un-ignored later.

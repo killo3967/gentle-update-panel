@@ -336,10 +336,30 @@ fn notes_key_for(source: &str, repository: Option<&str>) -> Option<String> {
     }
 
     if let Some(slug) = repository.and_then(github_slug) {
-        return Some(format!("gh:{slug}"));
+        let family = npm_name(source).and_then(|package| tag_family_for(&slug, package));
+        return Some(match family {
+            Some(family) => format!("gh:{slug}#{family}"),
+            None => format!("gh:{slug}"),
+        });
     }
 
     npm_name(source).map(|npm| format!("npm:{npm}"))
+}
+
+/// Repositories that publish more than one product in a single release feed.
+/// `Gentleman-Programming/engram` tags the Go core `v3.6.2` and the Pi plugin
+/// `pi-v0.6.0`, so the bare `gh:owner/repo` key would open the core's notes for
+/// the plugin row. The list is explicit on purpose: guessing here shows someone
+/// else's notes.
+fn tag_family_for(slug: &str, package: &str) -> Option<&'static str> {
+    const FAMILIES: &[(&str, &str, &str)] = &[("Gentleman-Programming/engram", "gentle-engram", "pi-v")];
+
+    FAMILIES
+        .iter()
+        .find(|(family_slug, family_package, _)| {
+            family_slug.eq_ignore_ascii_case(slug) && family_package.eq_ignore_ascii_case(package)
+        })
+        .map(|(_, _, family)| *family)
 }
 
 /// `npm:@scope/pkg` → `@scope/pkg`, `git:github.com/o/r` → `o/r`.
@@ -591,6 +611,34 @@ mod tests {
             notes_key_for("npm:@scope/pkg", None),
             Some("npm:@scope/pkg".to_string()),
             "without metadata the registry page is the honest source"
+        );
+    }
+
+    #[test]
+    fn a_repository_publishing_two_products_names_the_right_family() {
+        assert_eq!(
+            notes_key_for(
+                "npm:gentle-engram",
+                Some("git+https://github.com/Gentleman-Programming/engram.git")
+            ),
+            Some("gh:Gentleman-Programming/engram#pi-v".to_string()),
+            "that repo tags the core v3.x and the plugin pi-v0.x, so the bare slug opens the core notes"
+        );
+        assert_eq!(
+            notes_key_for(
+                "npm:gentle-engram",
+                Some("git+https://github.com/gentleman-programming/ENGRAM.git")
+            ),
+            Some("gh:gentleman-programming/ENGRAM#pi-v".to_string()),
+            "GitHub slugs are case-insensitive, so the family match must be too"
+        );
+        assert_eq!(
+            notes_key_for(
+                "npm:gentle-pi",
+                Some("git+https://github.com/gentleman-programming/engram.git")
+            ),
+            Some("gh:gentleman-programming/engram".to_string()),
+            "a different package in the same repo keeps the plain key"
         );
     }
 

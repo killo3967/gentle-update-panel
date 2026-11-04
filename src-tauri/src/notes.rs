@@ -15,8 +15,9 @@ use crate::parsers;
 use crate::{cli, probe};
 
 const CACHE_TTL_SECONDS: i64 = 6 * 60 * 60;
-/// Bump when the shape of a cached payload changes (e.g. number of releases).
-const CACHE_VERSION: &str = "v2";
+/// Bump when the shape of a cached payload changes (e.g. number of releases) or
+/// when a key would resolve to different releases than before.
+const CACHE_VERSION: &str = "v3";
 const MAX_RELEASES: usize = 8;
 const MAX_BODY_CHARS: usize = 20_000;
 const MAX_HITS: usize = 40;
@@ -51,10 +52,37 @@ impl Cached for CacheEntry {
     }
 }
 
-/// `v2|gh:owner/repo|1.0.0|1.1.0`; keys under another version are never read again.
+/// `v3|gh:owner/repo[#family]|1.0.0|1.1.0`; keys under another version are never
+/// read again.
 fn is_current_cache_key(key: &str) -> bool {
     key.strip_prefix(CACHE_VERSION)
         .is_some_and(|rest| rest.starts_with('|'))
+}
+
+/// `owner/repo#pi-v` → (`owner/repo`, `Some("pi-v")`). A repository can publish
+/// several products in one release feed, and then the bare slug would hand out
+/// another product's notes.
+fn split_tag_family(slug: &str) -> (&str, Option<&str>) {
+    let Some((slug, family)) = slug.split_once('#') else {
+        return (slug, None);
+    };
+    match family.trim() {
+        "" => (slug, None),
+        family => (slug, Some(family)),
+    }
+}
+
+/// The version a tag publishes for this family, or nothing when the tag belongs
+/// to another product. A family keeps only its own tags, and one `v` after the
+/// family is optional (`pi-v0.6.0`).
+fn release_version_from_tag(tag: &str, family: Option<&str>) -> Option<String> {
+    let tag = tag.trim();
+    let rest = match family {
+        Some(family) => tag.strip_prefix(family)?,
+        None => tag,
+    };
+    let version = rest.trim().trim_start_matches('v');
+    (!version.is_empty()).then(|| version.to_string())
 }
 
 pub struct NotesService {
@@ -236,6 +264,7 @@ impl NotesService {
         slug: &str,
         installed: Option<&str>,
     ) -> NotesPayload {
+        let (slug, family) = split_tag_family(slug);
         payload.title = slug.to_string();
         payload.url = Some(format!("https://github.com/{slug}/releases"));
 
@@ -306,14 +335,12 @@ impl NotesService {
         let mut parsed: Vec<Release> = releases
             .into_iter()
             .filter(|release| !release.draft)
-            .map(|release| Release {
-                version: release
-                    .tag_name
-                    .trim()
-                    .trim_start_matches('v')
-                    .to_string(),
-                date: release.published_at.map(|stamp| stamp.chars().take(10).collect()),
-                body: release.body.unwrap_or_default(),
+            .filter_map(|release| {
+                Some(Release {
+                    version: release_version_from_tag(&release.tag_name, family)?,
+                    date: release.published_at.map(|stamp| stamp.chars().take(10).collect()),
+                    body: release.body.unwrap_or_default(),
+                })
             })
             .collect();
 
@@ -434,15 +461,116 @@ mod tests {
 
     #[test]
     fn keys_under_an_older_cache_version_are_stale() {
-        assert!(is_current_cache_key("v2|gh:o/r|1.0.0|1.1.0"));
+        assert!(is_current_cache_key("v3|gh:o/r|1.0.0|1.1.0"));
         assert!(
             !is_current_cache_key("gh:o/r|1.0.0|1.1.0"),
-            "pre-v2 entries can never be read again"
+            "pre-v3 entries can never be read again"
         );
-        assert!(!is_current_cache_key("v1|gh:o/r|1.0.0|-"));
+        assert!(!is_current_cache_key("v2|gh:o/r|1.0.0|-"));
         assert!(
-            !is_current_cache_key("v20|gh:o/r|1.0.0|-"),
+            !is_current_cache_key("v30|gh:o/r|1.0.0|-"),
             "the separator makes the prefix unambiguous"
+        );
+    }
+
+    #[test]
+    fn a_notes_key_can_name_the_family_it_wants() {
+        assert_eq!(
+            split_tag_family("Gentleman-Programming/engram#pi-v"),
+            ("Gentleman-Programming/engram", Some("pi-v"))
+        );
+        assert_eq!(
+            split_tag_family("Gentleman-Programming/gentle-pi"),
+            ("Gentleman-Programming/gentle-pi", None)
+        );
+        assert_eq!(
+            split_tag_family("owner/repo#"),
+            ("owner/repo", None),
+            "an empty family must not filter every release away"
+        );
+    }
+
+    #[test]
+    fn a_family_keeps_only_its_own_tags() {
+        // The real feed of Gentleman-Programming/engram mixes the Go core's `v3.x`
+        // tags with the Pi plugin's `pi-v0.x` ones.
+        let tags = [
+            "v3.6.2",
+            "pi-v0.6.0",
+            "v3.6.1",
+            "pi-v0.5.0",
+            "v3.4.0",
+            "pi-v0.4.1",
+            "pi-v0.4.0",
+        ];
+
+        let plugin: Vec<String> = tags
+            .iter()
+            .filter_map(|tag| release_version_from_tag(tag, Some("pi-v")))
+            .collect();
+        assert_eq!(
+            plugin,
+            vec!["0.6.0", "0.5.0", "0.4.1", "0.4.0"],
+            "the core's tags must never reach the plugin's notes"
+        );
+
+        let core: Vec<String> = tags
+            .iter()
+            .filter_map(|tag| release_version_from_tag(tag, None))
+            .collect();
+        assert_eq!(
+            core,
+            vec![
+                "3.6.2",
+                "pi-v0.6.0",
+                "3.6.1",
+                "pi-v0.5.0",
+                "3.4.0",
+                "pi-v0.4.1",
+                "pi-v0.4.0"
+            ],
+            "without a family nothing is filtered: only the leading `v` is dropped"
+        );
+    }
+
+    #[test]
+    fn a_family_tag_without_a_version_is_dropped() {
+        assert_eq!(release_version_from_tag("pi-v", Some("pi-v")), None);
+        assert_eq!(release_version_from_tag("   ", None), None);
+    }
+
+    #[test]
+    fn the_plugin_row_opens_the_plugin_notes_and_not_the_core_ones() {
+        let tags = [
+            "v3.6.2",
+            "pi-v0.6.0",
+            "v3.6.1",
+            "v3.6.0",
+            "v3.5.4",
+            "pi-v0.5.0",
+            "v3.4.0",
+            "pi-v0.4.1",
+        ];
+        let parsed: Vec<Release> = tags
+            .iter()
+            .filter_map(|tag| {
+                Some(Release {
+                    version: release_version_from_tag(tag, Some("pi-v"))?,
+                    date: None,
+                    body: format!("notes for {tag}"),
+                })
+            })
+            .collect();
+
+        let shown = window(&parsed, Some("0.4.2"));
+        let shown: Vec<&str> = shown
+            .iter()
+            .map(|release| release.version.as_str())
+            .collect();
+        assert_eq!(
+            shown,
+            vec!["0.6.0", "0.5.0"],
+            "an installed 0.4.2 has exactly these plugin upgrades pending"
         );
     }
 }
