@@ -4,6 +4,7 @@ src-tauri/target/
 src-tauri/gen/
 .smoke/
 *.log
+.pi/
 .DS_Store
 
 src-tauri/icons/android/
