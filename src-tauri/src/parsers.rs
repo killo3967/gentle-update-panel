@@ -92,11 +92,17 @@ pub struct Release {
 ///   [ok] gentle-ai     installed: 4.3.1       latest: 4.3.1
 ///   [??] gga           installed: -           latest: 2.10.1
 /// ```
+///
+/// A row with an available update also carries a trailing hint, so the line end
+/// cannot be anchored after the latest version:
+/// ```text
+///   [UP] engram        installed: 3.6.0       latest: 3.6.1       gentle-ai upgrade (downloads pre-built binary)
+/// ```
 pub fn parse_gentle_ai_update(output: &str) -> Vec<ToolRow> {
     static LINE: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
     let re = LINE.get_or_init(|| {
         regex::Regex::new(
-            r"^\s*\[(?P<marker>[^\]]+)\]\s+(?P<name>[A-Za-z0-9_.-]+)\s+installed:\s*(?P<installed>\S+)\s+latest:\s*(?P<latest>\S+)\s*$",
+            r"^\s*\[(?P<marker>[^\]]+)\]\s+(?P<name>[A-Za-z0-9_.-]+)\s+installed:\s*(?P<installed>\S+)\s+latest:\s*(?P<latest>\S+)",
         )
         .expect("static pattern")
     });
@@ -347,6 +353,19 @@ Updates available: 1
         assert_eq!(rows[2].marker, "??");
         assert_eq!(rows[2].installed, None, "'-' means not installed");
         assert_eq!(rows[2].latest.as_deref(), Some("2.10.1"));
+    }
+
+    /// Regression: `engram` disappeared from the panel exactly when it had an
+    /// update, because that row carries a trailing upgrade hint.
+    #[test]
+    fn keeps_rows_that_carry_a_trailing_hint() {
+        let output = "  [UP] engram        installed: 3.6.0       latest: 3.6.1       gentle-ai upgrade (downloads pre-built binary)\n";
+        let rows = parse_gentle_ai_update(output);
+        assert_eq!(rows.len(), 1, "the row must not be dropped by the trailing hint");
+        assert_eq!(rows[0].name, "engram");
+        assert_eq!(rows[0].marker, "UP");
+        assert_eq!(rows[0].installed.as_deref(), Some("3.6.0"));
+        assert_eq!(rows[0].latest.as_deref(), Some("3.6.1"), "the hint must not leak into latest");
     }
 
     #[test]
