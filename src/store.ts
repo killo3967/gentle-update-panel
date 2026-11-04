@@ -654,7 +654,16 @@ export async function toggleAutostart(enabled: boolean): Promise<void> {
 
 export async function loadNotes(item: UpdateItem, force = false): Promise<void> {
   if (!item.notesKey) return;
-  if (state.notes[item.id] && !force) return;
+  // Notes hang off the item, but they belong to its key: when the key changes
+  // (a fixed source, another repository) the old payload must stop answering.
+  const cached = state.notes[item.id];
+  if (cached && cached.key !== item.notesKey) {
+    const remaining = { ...state.notes };
+    delete remaining[item.id];
+    setState({ notes: remaining });
+  } else if (cached && !force) {
+    return;
+  }
   if (state.notesLoading[item.id]) return;
 
   setState({ notesLoading: { ...state.notesLoading, [item.id]: true } });
