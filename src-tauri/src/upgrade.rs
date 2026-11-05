@@ -4,7 +4,9 @@ use std::time::Duration;
 
 use tauri::{AppHandle, Emitter, Manager};
 
-use crate::domain::{ApplyFailure, ApplyOutcome, ApplyStep, LogEvent, Snapshot, Status, Upgrade};
+use crate::domain::{
+    ApplyFailure, ApplyOutcome, ApplyStep, LogEvent, Snapshot, Status, UpdateItem, Upgrade,
+};
 use crate::journal::{self, kind, Draft};
 use crate::state::AppState;
 use crate::{cli, doctor};
@@ -102,10 +104,31 @@ pub fn plan(snapshot: &Snapshot, ids: &[String]) -> Vec<PlannedStep> {
                 versions: Some(versions.clone()),
             },
         };
-        steps.push(planned);
+        steps.push((plan_tier(item), planned));
     }
 
-    steps
+    // Stable: the tier only lifts the harness package, so everything else keeps
+    // the order the probe found it in.
+    steps.sort_by_key(|(tier, _)| *tier);
+    steps.into_iter().map(|(_, step)| step).collect()
+}
+
+/// The harness package has to be current before the packages it loads, so it
+/// installs ahead of the rest of the pi packages. Anything else keeps the probe
+/// order; `pi` itself is already ahead of every package.
+fn plan_tier(item: &UpdateItem) -> u8 {
+    match &item.upgrade {
+        Upgrade::PiPackage { source } if is_harness_package(source) => 1,
+        Upgrade::PiPackage { .. } => 2,
+        _ => 0,
+    }
+}
+
+fn is_harness_package(source: &str) -> bool {
+    matches!(
+        source.rsplit(|char| char == ':' || char == '/').next(),
+        Some("gentle-pi")
+    )
 }
 
 /// Runs every step in plan order and then `gentle-ai doctor` when configured.
@@ -467,6 +490,50 @@ mod tests {
                 "npm:c".to_string()
             ],
             "package sources must reach pi verbatim, never re-split"
+        );
+    }
+
+    #[test]
+    fn installs_the_harness_package_ahead_of_the_other_pi_packages() {
+        let snapshot = Snapshot {
+            checked_at: "now".to_string(),
+            duration_ms: 0,
+            items: vec![
+                item("gentle-ai", Upgrade::GentleAiTool { tool: "gentle-ai".into() }, Status::UpdateAvailable),
+                item("engram", Upgrade::GentleAiTool { tool: "engram".into() }, Status::UpdateAvailable),
+                item("pi", Upgrade::PiSelf, Status::UpdateAvailable),
+                item(
+                    "pkg:npm:gentle-engram",
+                    Upgrade::PiPackage { source: "npm:gentle-engram".into() },
+                    Status::UpdateAvailable,
+                ),
+                item(
+                    "pkg:npm:context-mode",
+                    Upgrade::PiPackage { source: "npm:context-mode".into() },
+                    Status::UpdateAvailable,
+                ),
+                item(
+                    "pkg:npm:gentle-pi",
+                    Upgrade::PiPackage { source: "npm:gentle-pi".into() },
+                    Status::UpdateAvailable,
+                ),
+            ],
+            warnings: Vec::new(),
+        };
+        let ids = snapshot.items.iter().map(|row| row.id.clone()).collect::<Vec<_>>();
+
+        let steps = plan(&snapshot, &ids);
+        assert_eq!(
+            steps.iter().map(|step| step.step.id.as_str()).collect::<Vec<_>>(),
+            vec![
+                "gentle-ai",
+                "engram",
+                "pi",
+                "pkg:npm:gentle-pi",
+                "pkg:npm:gentle-engram",
+                "pkg:npm:context-mode",
+            ],
+            "the harness package installs before the packages it loads"
         );
     }
 

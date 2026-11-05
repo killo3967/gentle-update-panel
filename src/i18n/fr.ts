@@ -34,6 +34,7 @@ export const fr: SourceDict = {
   "rail.lastChecked": "Dernière · {time}",
   "rail.checking": "Vérification…",
   "rail.checkNow": "Vérifier maintenant",
+  "rail.updateAll": "Tout mettre à jour ({count})",
   "rail.pieces": "Éléments",
   "rail.empty": "Aucune donnée pour l'instant. Vérifie pour découvrir ce qui est installé.",
   "rail.warnings": { one: "avertissement", other: "avertissements" },

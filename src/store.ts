@@ -158,6 +158,17 @@ export function selectedIds(): string[] {
     .map((item) => item.id);
 }
 
+/// Every row a batch can actually run: a manual piece would only fail later,
+/// so it is not counted nor sent. The backend still decides the install order.
+export function batchItems(): UpdateItem[] {
+  return actionableItems().filter((item) => item.upgrade.type !== "manual");
+}
+
+/// Every row a batch can touch. The backend decides the install order.
+export async function applyAll(): Promise<void> {
+  await requestApply(batchItems().map((item) => item.id));
+}
+
 export function updatesCount(): number {
   return items().filter((item) => !item.ignored && item.status === "updateAvailable")
     .length;

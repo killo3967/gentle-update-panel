@@ -35,6 +35,7 @@ export const es = {
   "rail.lastChecked": "Última · {time}",
   "rail.checking": "Comprobando…",
   "rail.checkNow": "Comprobar ahora",
+  "rail.updateAll": "Actualizar todo ({count})",
   "rail.pieces": "Piezas",
   "rail.empty": "Sin datos todavía. Comprueba para descubrir qué hay instalado.",
   "rail.warnings": { one: "aviso", other: "avisos" },

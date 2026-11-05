@@ -3,6 +3,7 @@
 import { getCurrentWindow } from "@tauri-apps/api/window";
 
 import {
+  applyAll,
   applyPanelUpdate,
   cancelPreflight,
   check,
@@ -296,6 +297,9 @@ async function handleClick(event: MouseEvent): Promise<void> {
       break;
     case "apply-selected":
       await requestApply(selectedIds());
+      break;
+    case "apply-all":
+      await applyAll();
       break;
     case "apply-panel-update":
       await applyPanelUpdate();

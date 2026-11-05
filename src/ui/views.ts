@@ -2,6 +2,7 @@
 
 import {
   actionableItems,
+  batchItems,
   items,
   journalEntries,
   pendingCount,
@@ -75,10 +76,17 @@ export function renderRail(): string {
           <div class="stamp">${t("rail.lastChecked", { time: relativeTime(snapshot?.checkedAt ?? null) })}</div>
         </div>
       </div>
-      <button class="btn btn-primary btn-block" data-action="check" ${state.checking ? "disabled" : ""}>
+      ${
+        batchItems().length > 0
+          ? `<button class="btn btn-primary btn-block" data-action="apply-all" ${state.applying ? "disabled" : ""}>
+        ${icons.check}
+        <span>${t("rail.updateAll", { count: batchItems().length })}</span>
+      </button>`
+          : `<button class="btn btn-primary btn-block" data-action="check" ${state.checking ? "disabled" : ""}>
         ${icons.refresh}
         <span>${state.checking ? t("rail.checking") : t("rail.checkNow")}</span>
-      </button>
+      </button>`
+      }
     </div>
 
     <nav class="nav" role="tablist" aria-label="${t("nav.sections")}">
