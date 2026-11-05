@@ -1186,6 +1186,36 @@ button {
   margin-bottom: 3px;
 }
 
+.md-table {
+  margin: 0 0 var(--space-2);
+  overflow-x: auto;
+}
+
+.md table {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 12px;
+}
+
+.md th,
+.md td {
+  border: 1px solid var(--line);
+  padding: 4px var(--space-2);
+  text-align: left;
+  vertical-align: top;
+}
+
+.md th {
+  background: var(--panel-2);
+  color: var(--text);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.md td code {
+  white-space: nowrap;
+}
+
 .md a {
   color: var(--accent);
   text-decoration: none;

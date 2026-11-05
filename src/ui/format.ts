@@ -159,10 +159,18 @@ export function journalDetail(entry: JournalEntry): string | null {
 // Markdown (release notes)
 // ---------------------------------------------------------------------------
 
+interface NoteTable {
+  header: string[];
+  align: string[];
+  rows: string[][];
+}
+
 export function markdownToHtml(markdown: string, repo?: string): string {
   const output: string[] = [];
+  const lines = markdown.split(/\r?\n/);
   let inList = false;
   let inCode = false;
+  let table: NoteTable | null = null;
 
   const closeList = () => {
     if (inList) {
@@ -171,10 +179,35 @@ export function markdownToHtml(markdown: string, repo?: string): string {
     }
   };
 
-  for (const rawLine of markdown.split(/\r?\n/)) {
+  /**
+   * Pipe tables are the only structure the notes use to line up columns, so they
+   * get real cells. As a plain paragraph the runs of spaces that align the pipes
+   * collapse and the table reads as a smudge.
+   */
+  const closeTable = () => {
+    if (!table) return;
+    const current = table;
+    table = null;
+    const cell = (tag: "th" | "td", value: string, index: number) => {
+      const align = current.align[index] ?? "";
+      const style = align === "center" || align === "right" ? ` style="text-align:${align}"` : "";
+      return `<${tag}${style}>${inlineMd(value, repo)}</${tag}>`;
+    };
+    const head = current.header.map((value, index) => cell("th", value, index)).join("");
+    const body = current.rows
+      .map((row) => `<tr>${row.map((value, index) => cell("td", value, index)).join("")}</tr>`)
+      .join("");
+    output.push(
+      `<div class="md-table"><table><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table></div>`,
+    );
+  };
+
+  for (let index = 0; index < lines.length; index += 1) {
+    const rawLine = lines[index];
     const line = rawLine.trimEnd();
 
     if (line.trim().startsWith("```")) {
+      closeTable();
       closeList();
       output.push(inCode ? "</code></pre>" : "<pre><code>");
       inCode = !inCode;
@@ -186,9 +219,24 @@ export function markdownToHtml(markdown: string, repo?: string): string {
     }
 
     if (line.trim() === "") {
+      closeTable();
       closeList();
       continue;
     }
+
+    if (startsTableRow(line)) {
+      if (table) {
+        if (!isTableSeparator(line)) table.rows.push(splitRow(line));
+        continue;
+      }
+      if (index + 1 < lines.length && isTableSeparator(lines[index + 1])) {
+        closeList();
+        table = { header: splitRow(line), align: tableAlign(lines[index + 1]), rows: [] };
+        index += 1;
+        continue;
+      }
+    }
+    closeTable();
 
     const bullet = line.match(/^\s*[-*]\s+(.*)$/);
     if (bullet) {
@@ -216,9 +264,55 @@ export function markdownToHtml(markdown: string, repo?: string): string {
     output.push(`<p>${inlineMd(line, repo)}</p>`);
   }
 
+  closeTable();
   closeList();
   if (inCode) output.push("</code></pre>");
   return output.join("\n");
+}
+
+/** A table row starts with a pipe, the way GitHub writes it. */
+const startsTableRow = (line: string): boolean => /^\s*\|/.test(line);
+
+/** `|---|---:|` — dashes with optional colons, one group per cell. */
+const isTableSeparator = (line: string): boolean =>
+  line.includes("|") && splitRow(line).every((cell) => /^:?-{2,}:?$/.test(cell));
+
+/** Splits a pipe row into cells, leaving escaped pipes and code spans alone. */
+function splitRow(line: string): string[] {
+  const trimmed = line.trim();
+  const body = trimmed.startsWith("|") ? trimmed.slice(1) : trimmed;
+  const text = body.endsWith("|") ? body.slice(0, -1) : body;
+  const cells: string[] = [];
+  let cell = "";
+  let inCode = false;
+  for (let index = 0; index < text.length; index += 1) {
+    const char = text[index];
+    if (char === "\\" && text[index + 1] === "|") {
+      cell += "|";
+      index += 1;
+      continue;
+    }
+    if (char === "`") inCode = !inCode;
+    if (char === "|" && !inCode) {
+      cells.push(cell.trim());
+      cell = "";
+      continue;
+    }
+    cell += char;
+  }
+  cells.push(cell.trim());
+  return cells;
+}
+
+function tableAlign(separator: string): string[] {
+  return splitRow(separator).map((cell) => {
+    const left = cell.startsWith(":");
+    const right = cell.endsWith(":");
+    if (left && right) return "center";
+    if (right) return "right";
+    if (left) return "left";
+    return "";
+  });
 }
 
 const anchor = (href: string, label: string): string =>
