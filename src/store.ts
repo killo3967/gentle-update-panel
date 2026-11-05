@@ -679,7 +679,7 @@ export async function loadNotes(item: UpdateItem, force = false): Promise<void> 
 
   setState({ notesLoading: { ...state.notesLoading, [item.id]: true } });
   try {
-    const payload = await api.notes(item.notesKey, item.installed, item.latest, force);
+    const payload = await api.notes(item.notesKey, item.installed, item.latest, force, item.name);
     setState({
       notes: { ...state.notes, [item.id]: payload },
       notesLoading: { ...state.notesLoading, [item.id]: false },

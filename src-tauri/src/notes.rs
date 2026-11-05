@@ -31,6 +31,68 @@ const CACHE_LIMITS: Limits = Limits {
     max_age_days: 45,
 };
 
+/// Some packages are published from a monorepo, so npm only names the umbrella
+/// repository and the button would open a releases page that usually holds
+/// nothing. Entries are explicit on purpose — guessing a package's own page from
+/// its name would eventually send the user to a stranger's repository — and are
+/// keyed by the package, because every sibling in that monorepo shares one slug.
+const PAGE_OVERRIDES: &[(&str, &str)] = &[(
+    "@juicesharp/rpiv-btw",
+    "https://github.com/juicesharp/rpiv-btw/releases",
+)];
+
+/// The page a package offers for itself, or nothing.
+fn page_override(package: Option<&str>) -> Option<&'static str> {
+    let package = package?;
+    PAGE_OVERRIDES
+        .iter()
+        .find(|(name, _)| *name == package)
+        .map(|(_, url)| *url)
+}
+
+/// The override never enters the cache: an entry keeps the URL its key implies,
+/// so each caller gets the page that belongs to the package it is showing.
+fn with_page_override(mut payload: NotesPayload, package: Option<&str>) -> NotesPayload {
+    if let Some(url) = page_override(package) {
+        payload.url = Some(url.to_string());
+    }
+    payload
+}
+
+#[cfg(test)]
+mod page_override_tests {
+    use super::*;
+
+    fn monorepo_payload() -> NotesPayload {
+        NotesPayload {
+            key: "gh:juicesharp/rpiv-mono".to_string(),
+            title: "juicesharp/rpiv-mono".to_string(),
+            releases: Vec::new(),
+            url: Some("https://github.com/juicesharp/rpiv-mono/releases".to_string()),
+            fetched_at: "2026-01-01T00:00:00Z".to_string(),
+            error: None,
+        }
+    }
+
+    #[test]
+    fn a_monorepo_package_opens_the_page_it_names() {
+        let overridden = with_page_override(monorepo_payload(), Some("@juicesharp/rpiv-btw"));
+        assert_eq!(
+            overridden.url.as_deref(),
+            Some("https://github.com/juicesharp/rpiv-btw/releases")
+        );
+    }
+
+    #[test]
+    fn a_sibling_or_an_anonymous_caller_keeps_the_declared_repository() {
+        let declared = monorepo_payload();
+        let sibling = with_page_override(declared.clone(), Some("@juicesharp/rpiv-other"));
+        let anonymous = with_page_override(declared.clone(), None);
+        assert_eq!(sibling.url, declared.url);
+        assert_eq!(anonymous.url, declared.url);
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct NoteHit {
@@ -123,6 +185,7 @@ impl NotesService {
         installed: Option<&str>,
         latest: Option<&str>,
         force: bool,
+        package: Option<&str>,
     ) -> NotesPayload {
         let cache_key = format!(
             "{CACHE_VERSION}|{key}|{}|{}",
@@ -134,7 +197,7 @@ impl NotesService {
             if let Some(entry) = self.cache.lock().ok().and_then(|cache| cache.get(&cache_key).cloned())
             {
                 if is_fresh(&entry.fetched_at) {
-                    return entry.payload;
+                    return with_page_override(entry.payload, package);
                 }
             }
         }
@@ -156,7 +219,7 @@ impl NotesService {
                 self.persist(&snapshot);
             }
         }
-        payload
+        with_page_override(payload, package)
     }
 
     /// Case-insensitive search over every cached release body.

@@ -25,8 +25,13 @@ export const api = {
   piHealth: () => invoke<PiHealth>("run_pi_health"),
   applyPanelUpdate: () => invoke<void>("apply_panel_update"),
   apply: (ids: string[]) => invoke<ApplyOutcome>("apply_updates", { ids }),
-  notes: (key: string, installed: string | null, latest: string | null, force = false) =>
-    invoke<NotesPayload>("get_notes", { key, installed, latest, force }),
+  notes: (
+    key: string,
+    installed: string | null,
+    latest: string | null,
+    force = false,
+    pkg: string | null = null,
+  ) => invoke<NotesPayload>("get_notes", { key, installed, latest, force, package: pkg }),
   saveConfig: (config: Config) => invoke<Config>("save_config", { config }),
   setAutostart: (enabled: boolean) => invoke<boolean>("set_autostart", { enabled }),
   openUrl: (url: string) => invoke<void>("open_url", { url }),

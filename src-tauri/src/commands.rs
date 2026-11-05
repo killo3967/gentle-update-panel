@@ -261,13 +261,20 @@ pub async fn get_notes(
     installed: Option<String>,
     latest: Option<String>,
     force: bool,
+    package: Option<String>,
 ) -> NotesPayload {
     let notes: Arc<_> = {
         let state = app.state::<AppState>();
         state.notes.clone()
     };
     notes
-        .get(&key, installed.as_deref(), latest.as_deref(), force)
+        .get(
+            &key,
+            installed.as_deref(),
+            latest.as_deref(),
+            force,
+            package.as_deref(),
+        )
         .await
 }
 
