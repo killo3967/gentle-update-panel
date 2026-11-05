@@ -542,6 +542,30 @@ mod tests {
     }
 
     #[test]
+    fn a_scoped_family_keeps_the_server_and_drops_the_bundle_stub() {
+        // The real feed of upstash/context7, newest first: the mcpb bundle, the
+        // CLI, the MCP server and the SDK share one release list.
+        let tags = [
+            "mcpb-v4.5.0",
+            "ctx7@0.9.0",
+            "@upstash/context7-mcp@4.5.0",
+            "ctx7@0.8.2",
+            "@upstash/context7-sdk@0.6.0",
+            "mcpb-v4.4.4",
+        ];
+
+        let server: Vec<String> = tags
+            .iter()
+            .filter_map(|tag| release_version_from_tag(tag, Some("@upstash/context7-mcp@")))
+            .collect();
+        assert_eq!(
+            server,
+            vec!["4.5.0"],
+            "the bundle stub and the CLI must never reach the server's notes"
+        );
+    }
+
+    #[test]
     fn a_family_tag_without_a_version_is_dropped() {
         assert_eq!(release_version_from_tag("pi-v", Some("pi-v")), None);
         assert_eq!(release_version_from_tag("   ", None), None);

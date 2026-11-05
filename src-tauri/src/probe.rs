@@ -364,10 +364,19 @@ fn notes_key_for(source: &str, repository: Option<&str>) -> Option<String> {
 /// Repositories that publish more than one product in a single release feed.
 /// `Gentleman-Programming/engram` tags the Go core `v3.6.2` and the Pi plugin
 /// `pi-v0.6.0`, so the bare `gh:owner/repo` key would open the core's notes for
-/// the plugin row. The list is explicit on purpose: guessing here shows someone
-/// else's notes.
+/// the plugin row. `upstash/context7` mixes `mcpb-v4.5.0` (the MCP bundle, whose
+/// body is only a link), `ctx7@0.9.0` (the CLI) and `@upstash/context7-mcp@4.5.0`
+/// (the server), and the newest of them is the bundle stub. The list is explicit
+/// on purpose: guessing here shows someone else's notes.
 fn tag_family_for(slug: &str, package: &str) -> Option<&'static str> {
-    const FAMILIES: &[(&str, &str, &str)] = &[("Gentleman-Programming/engram", "gentle-engram", "pi-v")];
+    const FAMILIES: &[(&str, &str, &str)] = &[
+        ("Gentleman-Programming/engram", "gentle-engram", "pi-v"),
+        (
+            "upstash/context7",
+            "@upstash/context7-pi",
+            "@upstash/context7-mcp@",
+        ),
+    ];
 
     FAMILIES
         .iter()
@@ -676,6 +685,14 @@ mod tests {
             ),
             Some("gh:gentleman-programming/engram".to_string()),
             "a different package in the same repo keeps the plain key"
+        );
+        assert_eq!(
+            notes_key_for(
+                "npm:@upstash/context7-pi",
+                Some("git+https://github.com/upstash/context7.git")
+            ),
+            Some("gh:upstash/context7#@upstash/context7-mcp@".to_string()),
+            "that repo's newest release is the mcpb bundle stub, not the server's notes"
         );
     }
 
