@@ -272,7 +272,17 @@ async function handleClick(event: MouseEvent): Promise<void> {
     closeContextMenu();
   }
 
-  // Checkboxes toggle the batch, not the selected item.
+  // Checkboxes toggle the batch, not the selected item. The visible box is the
+  // <label>, not the hidden input, and the label lives inside a selectable row:
+  // letting the row handle that click selects and re-renders the piece, which
+  // discards the label's activation and the box never gets checked. Resolve the
+  // pick control here and toggle the batch selection directly.
+  const pick = resolvePick(target);
+  if (pick?.dataset.id) {
+    event.preventDefault();
+    toggleSelection(pick.dataset.id);
+    return;
+  }
   if (target.closest('input[type="checkbox"]')) return;
 
   const element = target.closest<HTMLElement>("[data-action]");
@@ -453,6 +463,26 @@ async function handleClick(event: MouseEvent): Promise<void> {
     default:
       break;
   }
+}
+
+/** Resolve the batch-selection checkbox behind a click, input or visible label box. */
+function resolvePick(target: HTMLElement): HTMLInputElement | null {
+  const input = target.closest<HTMLInputElement>('input[type="checkbox"][data-action="toggle"]');
+  if (input) return input;
+
+  // The whole pick cell counts: its visible box is a 13px label inside a larger cell.
+  const cell = target.closest<HTMLElement>(".piece-check, .row-pick");
+  if (cell) {
+    return cell.querySelector<HTMLInputElement>('input[type="checkbox"][data-action="toggle"]');
+  }
+
+  const label = target.closest<HTMLLabelElement>("label[for]");
+  if (!label?.htmlFor) return null;
+
+  const owner = label.ownerDocument.getElementById(label.htmlFor);
+  return owner instanceof HTMLInputElement && owner.matches('input[type="checkbox"][data-action="toggle"]')
+    ? owner
+    : null;
 }
 
 function handleChange(event: Event): void {
