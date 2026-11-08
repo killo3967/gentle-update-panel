@@ -697,7 +697,7 @@ export async function loadNotes(item: UpdateItem, force = false): Promise<void> 
     }
 
     if (state.config?.translationEnabled) {
-      for (const release of payload.releases) void loadTranslation(item, release);
+      for (const release of payload.releases) queueTranslation(item, release);
     }
   } catch (error) {
     setState({
@@ -719,6 +719,18 @@ export async function loadNotes(item: UpdateItem, force = false): Promise<void> 
 
 export function translationKey(item: UpdateItem, release: Release): string {
   return `${item.id}|${release.version}`;
+}
+
+/**
+ * The keyless engines answer 429 as soon as several notes are translated at
+ * once, so translations queue instead of firing in parallel.
+ */
+let translationQueue: Promise<void> = Promise.resolve();
+
+function queueTranslation(item: UpdateItem, release: Release): void {
+  translationQueue = translationQueue
+    .then(() => loadTranslation(item, release))
+    .catch(() => undefined);
 }
 
 export async function loadTranslation(item: UpdateItem, release: Release): Promise<void> {
@@ -756,7 +768,7 @@ export async function toggleTranslation(): Promise<void> {
     const item = items().find((candidate) => candidate.id === state.selectedId);
     const payload = item ? state.notes[item.id] : undefined;
     if (item && payload) {
-      for (const release of payload.releases) void loadTranslation(item, release);
+      for (const release of payload.releases) queueTranslation(item, release);
     }
   }
 }

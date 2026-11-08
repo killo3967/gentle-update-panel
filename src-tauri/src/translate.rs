@@ -25,7 +25,11 @@ const GOOGLE_URL: &str = "https://translate.googleapis.com/translate_a/single";
 const MICROSOFT_URL: &str = "https://edge.microsoft.com/translate/translatetext";
 const GOOGLE_BLOCK: usize = 1_500;
 const MICROSOFT_BLOCK: usize = 4_000;
-const THROTTLE: Duration = Duration::from_millis(250);
+// The keyless Google endpoint answers 429 when a long note is pushed as a
+// burst of chunk requests, so requests are spaced and retried with backoff.
+const THROTTLE: Duration = Duration::from_millis(600);
+const GOOGLE_ATTEMPTS: usize = 5;
+const RETRY_BACKOFF: Duration = Duration::from_millis(900);
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(20);
 const MAX_BODY_CHARS: usize = 40_000;
 
@@ -68,6 +72,38 @@ pub fn protect(markdown: &str) -> Protected {
 pub fn restore(translated: &str, tokens: &[String]) -> Option<String> {
     let mut text = translated.to_string();
     for (index, token) in tokens.iter().enumerate() {
+        let placeholder = format!("[[T{index}]]");
+        if text.matches(&placeholder).count() != 1 {
+            return None;
+        }
+        text = text.replace(&placeholder, token);
+    }
+    Some(text)
+}
+
+/// Placeholders a chunk carries, in order and without duplicates: a chunk is
+/// restored on its own so one mangled chunk cannot discard a whole note.
+fn placeholder_indices(chunk: &str) -> Vec<usize> {
+    let pattern = Regex::new(r"\[\[T(\d+)\]\]").expect("static regex");
+    let mut indices: Vec<usize> = Vec::new();
+    for captures in pattern.captures_iter(chunk) {
+        let index: usize = match captures[1].parse() {
+            Ok(index) => index,
+            Err(_) => return Vec::new(),
+        };
+        if !indices.contains(&index) {
+            indices.push(index);
+        }
+    }
+    indices
+}
+
+/// Restores only the placeholders a chunk carries. Returns `None` when one of
+/// them was lost or duplicated, which means the translator mangled it.
+pub fn restore_subset(translated: &str, tokens: &[String], indices: &[usize]) -> Option<String> {
+    let mut text = translated.to_string();
+    for index in indices {
+        let token = tokens.get(*index)?;
         let placeholder = format!("[[T{index}]]");
         if text.matches(&placeholder).count() != 1 {
             return None;
@@ -347,12 +383,37 @@ impl TranslationService {
             if index > 0 {
                 tokio::time::sleep(THROTTLE).await;
             }
-            parts.push(self.google_chunk(chunk, target).await?);
+            let translated = self.google_chunk_retrying(chunk, target).await?;
+            let indices = placeholder_indices(chunk);
+            parts.push(
+                restore_subset(&translated, &protected.tokens, &indices)
+                    .ok_or_else(|| "el traductor alteró el código protegido".to_string())?,
+            );
         }
 
-        let joined = parts.join("\n\n");
-        restore(&joined, &protected.tokens)
-            .ok_or_else(|| "el traductor alteró el código protegido".to_string())
+        Ok(parts.join("\n\n"))
+    }
+
+    /// Google answers 429 once a long note turns into a burst of chunks: wait
+    /// and retry instead of dropping the whole translation on the first one.
+    async fn google_chunk_retrying(&self, text: &str, target: &str) -> Result<String, String> {
+        let mut wait = RETRY_BACKOFF;
+        let mut last = String::new();
+
+        for attempt in 0..GOOGLE_ATTEMPTS {
+            match self.google_chunk(text, target).await {
+                Ok(translated) => return Ok(translated),
+                Err(error) => {
+                    last = error;
+                    if attempt + 1 < GOOGLE_ATTEMPTS {
+                        tokio::time::sleep(wait).await;
+                        wait *= 2;
+                    }
+                }
+            }
+        }
+
+        Err(last)
     }
 
     async fn google_chunk(&self, text: &str, target: &str) -> Result<String, String> {
@@ -420,7 +481,9 @@ impl TranslationService {
 
         let items = payload.as_array().ok_or("respuesta inesperada")?;
         let mut parts = Vec::new();
-        for item in items {
+        let mut degraded = 0usize;
+
+        for (chunk, item) in chunks.iter().zip(items) {
             let translated = item
                 .get("translations")
                 .and_then(|value| value.as_array())
@@ -428,12 +491,35 @@ impl TranslationService {
                 .and_then(|first| first.get("text"))
                 .and_then(|value| value.as_str())
                 .ok_or("falta el texto traducido")?;
-            parts.push(translated.to_string());
+            let indices = placeholder_indices(chunk);
+
+            let restored = match restore_subset(translated, &protected.tokens, &indices) {
+                Some(text) => Some(text),
+                // The edge endpoint rewrites placeholders inside dense link
+                // lists, so this chunk asks Google once before giving up.
+                None => match self.google_chunk(chunk, target).await {
+                    Ok(text) => restore_subset(&text, &protected.tokens, &indices),
+                    Err(_) => None,
+                },
+            };
+
+            parts.push(match restored {
+                Some(text) => text,
+                None => {
+                    degraded += 1;
+                    // Keeping the source chunk is honest: no mangled code or
+                    // link, and the rest of the note is still translated.
+                    restore_subset(chunk, &protected.tokens, &indices)
+                        .ok_or_else(|| "el traductor alteró el código protegido".to_string())?
+                }
+            });
         }
 
-        let joined = parts.join("\n\n");
-        restore(&joined, &protected.tokens)
-            .ok_or_else(|| "el traductor alteró el código protegido".to_string())
+        if degraded * 2 > chunks.len() {
+            return Err("el traductor alteró el código protegido".to_string());
+        }
+
+        Ok(parts.join("\n\n"))
     }
 
     fn persist(&self, cache: &HashMap<String, CacheEntry>) {
@@ -556,3 +642,40 @@ See [the workflow](https://github.com/o/r/actions/runs/42) for details and read 
         assert_ne!(fingerprint("same"), fingerprint("same "));
     }
 }
+
+#[cfg(test)]
+mod chunk_tests {
+    use super::*;
+
+    #[test]
+    fn a_chunk_only_restores_its_own_placeholders() {
+        let protected = protect(
+            "First `alpha` block.\n\nSecond [link](https://example.com/b) block with `beta`.",
+        );
+        let chunks = pack(blocks(&protected.text, 60), 60);
+        assert!(chunks.len() >= 2, "the note splits in more than one chunk");
+
+        let first = placeholder_indices(&chunks[0]);
+        let second = placeholder_indices(&chunks[1]);
+        assert_eq!(first.len(), 1);
+        assert_eq!(second.len(), 2);
+        assert_ne!(first, second, "each chunk carries different placeholders");
+
+        let restored = restore_subset(&chunks[0], &protected.tokens, &first).expect("roundtrip");
+        assert_eq!(restored, "First `alpha` block.");
+    }
+
+    #[test]
+    fn a_lost_placeholder_only_fails_its_own_chunk() {
+        let protected = protect("Keep `alpha` and `beta` safe.");
+        let indices = placeholder_indices(&protected.text);
+        let mangled = protected.text.replace("[[T1]]", "«beta»");
+
+        assert_eq!(restore_subset(&mangled, &protected.tokens, &indices), None);
+        assert_eq!(
+            restore_subset(&protected.text, &protected.tokens, &indices),
+            Some("Keep `alpha` and `beta` safe.".to_string())
+        );
+    }
+}
+
