@@ -17,7 +17,7 @@ use crate::{cli, probe};
 const CACHE_TTL_SECONDS: i64 = 6 * 60 * 60;
 /// Bump when the shape of a cached payload changes (e.g. number of releases) or
 /// when a key would resolve to different releases than before.
-const CACHE_VERSION: &str = "v3";
+const CACHE_VERSION: &str = "v4";
 const MAX_RELEASES: usize = 8;
 const MAX_BODY_CHARS: usize = 20_000;
 const MAX_HITS: usize = 40;
@@ -274,7 +274,7 @@ impl NotesService {
         let _ = cache::store(&self.cache_path, cache);
     }
 
-    async fn fetch(&self, key: &str, installed: Option<&str>, _latest: Option<&str>) -> NotesPayload {
+    async fn fetch(&self, key: &str, installed: Option<&str>, latest: Option<&str>) -> NotesPayload {
         let base = NotesPayload {
             key: key.to_string(),
             title: key.to_string(),
@@ -285,7 +285,7 @@ impl NotesService {
         };
 
         if key == "pi:changelog" {
-            return self.fetch_pi_changelog(base, installed);
+            return self.fetch_pi_changelog(base, installed, latest).await;
         }
 
         if let Some(slug) = key.strip_prefix("gh:") {
@@ -302,7 +302,12 @@ impl NotesService {
         }
     }
 
-    fn fetch_pi_changelog(&self, mut payload: NotesPayload, installed: Option<&str>) -> NotesPayload {
+    async fn fetch_pi_changelog(
+        &self,
+        mut payload: NotesPayload,
+        installed: Option<&str>,
+        latest: Option<&str>,
+    ) -> NotesPayload {
         payload.title = "pi".to_string();
         payload.url = Some("https://www.npmjs.com/package/@earendil-works/pi-coding-agent".to_string());
 
@@ -316,9 +321,35 @@ impl NotesService {
             return payload;
         };
 
-        let all = parsers::parse_changelog(&markdown);
+        let mut all = parsers::parse_changelog(&markdown);
+
+        // The changelog ships inside the installed build, so it cannot know
+        // about the version that is still only upstream. Without this the panel
+        // offers 1.5.1 and then shows the notes of 1.5.0.
+        if latest.is_some_and(|latest| changelog_is_behind(&all, latest)) {
+            if let Some(latest) = latest {
+                if let Some(published) = self.fetch_published_changelog(latest).await {
+                    all = merge_releases(published, all);
+                }
+            }
+        }
+
         payload.releases = window(&all, installed).into_iter().map(trim_body).collect();
         payload
+    }
+
+    /// The changelog published with the pending version, straight from npm.
+    async fn fetch_published_changelog(&self, version: &str) -> Option<Vec<Release>> {
+        let url = format!(
+            "https://unpkg.com/@earendil-works/pi-coding-agent@{version}/CHANGELOG.md"
+        );
+        let response = self.client.get(&url).send().await.ok()?;
+        if !response.status().is_success() {
+            return None;
+        }
+        let markdown = response.text().await.ok()?;
+        let releases = parsers::parse_changelog(&markdown);
+        (!releases.is_empty()).then_some(releases)
     }
 
     async fn fetch_github(
@@ -440,6 +471,33 @@ impl NotesService {
     }
 }
 
+/// The local copy stops at the installed build, so it trails a version that is
+/// only published upstream.
+fn changelog_is_behind(releases: &[Release], latest: &str) -> bool {
+    let Some(latest) = parsers::parse_version(latest) else {
+        return false;
+    };
+    releases
+        .iter()
+        .filter_map(|release| parsers::parse_version(&release.version))
+        .max()
+        .map_or(true, |newest| newest < latest)
+}
+
+/// The published changelog is the superset: its bodies win and any release the
+/// local copy still has is kept.
+fn merge_releases(published: Vec<Release>, local: Vec<Release>) -> Vec<Release> {
+    let mut merged = published;
+    let known: std::collections::HashSet<String> =
+        merged.iter().map(|release| release.version.clone()).collect();
+    merged.extend(
+        local
+            .into_iter()
+            .filter(|release| !known.contains(&release.version)),
+    );
+    merged
+}
+
 /// Picks the releases to show, newest first. When nothing is pending it keeps
 /// the newest `MAX_RELEASES` so history stays browsable with the prev/next nav.
 fn window(releases: &[Release], installed: Option<&str>) -> Vec<Release> {
@@ -524,10 +582,10 @@ mod tests {
 
     #[test]
     fn keys_under_an_older_cache_version_are_stale() {
-        assert!(is_current_cache_key("v3|gh:o/r|1.0.0|1.1.0"));
+        assert!(is_current_cache_key("v4|gh:o/r|1.0.0|1.1.0"));
         assert!(
-            !is_current_cache_key("gh:o/r|1.0.0|1.1.0"),
-            "pre-v3 entries can never be read again"
+            !is_current_cache_key("v3|gh:o/r|1.0.0|1.1.0"),
+            "notes cached before the published changelog was read can never be served again"
         );
         assert!(!is_current_cache_key("v2|gh:o/r|1.0.0|-"));
         assert!(
@@ -666,6 +724,48 @@ mod tests {
             shown,
             vec!["0.6.0", "0.5.0"],
             "an installed 0.4.2 has exactly these plugin upgrades pending"
+        );
+    }
+
+    fn release(version: &str, body: &str) -> Release {
+        Release {
+            version: version.to_string(),
+            date: None,
+            body: body.to_string(),
+        }
+    }
+
+    #[test]
+    fn a_local_changelog_behind_the_pending_version_asks_for_the_published_one() {
+        let local = vec![release("1.5.0", "local"), release("1.4.0", "older")];
+
+        assert!(
+            changelog_is_behind(&local, "1.5.1"),
+            "the installed build cannot ship the notes of a version it does not have"
+        );
+        assert!(!changelog_is_behind(&local, "v1.5.0"));
+        assert!(!changelog_is_behind(&local, "1.4.9"));
+        assert!(!changelog_is_behind(&local, "sin versión"));
+    }
+
+    #[test]
+    fn the_published_changelog_wins_and_the_local_releases_stay() {
+        let published = vec![release("1.5.1", "published"), release("1.5.0", "published 1.5.0")];
+        let local = vec![release("1.5.0", "local 1.5.0"), release("1.4.0", "local 1.4.0")];
+
+        let merged = merge_releases(published, local);
+        let bodies: Vec<(&str, &str)> = merged
+            .iter()
+            .map(|release| (release.version.as_str(), release.body.as_str()))
+            .collect();
+
+        assert_eq!(
+            bodies,
+            vec![
+                ("1.5.1", "published"),
+                ("1.5.0", "published 1.5.0"),
+                ("1.4.0", "local 1.4.0"),
+            ]
         );
     }
 }
