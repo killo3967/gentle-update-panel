@@ -129,9 +129,19 @@ export function sourceLabel(source: string | null): string {
   return source.replace(/^npm:/, "").replace(/^git:/, "");
 }
 
+/** `v1.5.1`, ` 1.5.1 ` and `1.5.1` name the same release for the reader. */
+export function normalizeVersion(version: string): string {
+  return version.trim().replace(/^v/i, "").toLowerCase();
+}
+
+export function sameVersion(installed: string | null, latest: string | null): boolean {
+  if (!installed || !latest) return installed === latest;
+  return normalizeVersion(installed) === normalizeVersion(latest);
+}
+
 export function delta(installed: string | null, latest: string | null): string {
   if (!installed && latest) return `→ ${latest}`;
-  if (installed && latest && installed !== latest) return `${installed}→${latest}`;
+  if (installed && latest && !sameVersion(installed, latest)) return `${installed}→${latest}`;
   if (installed) return installed;
   return "—";
 }

@@ -36,6 +36,7 @@ import {
   markdownToHtml,
   repositorySlug,
   relativeTime,
+  sameVersion,
   sourceLabel,
   statusMeta,
 } from "./format";
@@ -136,7 +137,7 @@ function pieceRow(item: UpdateItem): string {
     }
     <span class="dot dot--${meta.tone}" aria-hidden="true"></span>
     <span class="piece-name">${esc(item.name)}</span>
-    <span class="delta" title="${esc(item.installed ?? t("piece.notInstalled"))} → ${esc(item.latest ?? "?")}">${esc(delta(item.installed, item.latest))}</span>
+    <span class="delta" title="${esc(delta(item.installed, item.latest))}">${esc(delta(item.installed, item.latest))}</span>
   </div>`;
 }
 
@@ -228,7 +229,7 @@ function overviewRow(item: UpdateItem): string {
   const meta = ignored ? { label: t("piece.ignored"), tone: "faint" as const } : statusMeta(item.status);
   const actionable = !ignored && isActionable(item.status);
   const checked = state.selection.has(item.id);
-  const showsDelta = Boolean(item.installed && item.latest && item.installed !== item.latest);
+  const showsDelta = Boolean(item.installed && item.latest && !sameVersion(item.installed, item.latest));
   const versions = showsDelta
     ? `${item.installed}<span class="arrow">${icons.arrowRight}</span><span class="latest">${item.latest}</span>`
     : `${item.installed ?? item.latest ?? "—"}`;
@@ -300,6 +301,7 @@ function renderDetail(item: UpdateItem): string {
   const actionable = !ignored && isActionable(item.status);
   const notes = state.notes[item.id];
   const loading = state.notesLoading[item.id];
+  const showsAvailable = Boolean(item.latest) && !(item.installed && sameVersion(item.installed, item.latest));
 
   return `<section class="content detail">
     <header class="detail-head">
@@ -316,8 +318,8 @@ function renderDetail(item: UpdateItem): string {
 
     <div class="versions">
       <div class="version-cell"><span class="version-label">${t("detail.installed")}</span><span class="version-value">${esc(item.installed ?? "—")}</span></div>
-      <span class="version-arrow">${icons.arrowRight}</span>
-      <div class="version-cell"><span class="version-label">${t("detail.available")}</span><span class="version-value accent">${esc(item.latest ?? "—")}</span></div>
+      ${showsAvailable ? `<span class="version-arrow">${icons.arrowRight}</span>
+      <div class="version-cell"><span class="version-label">${t("detail.available")}</span><span class="version-value accent">${esc(item.latest ?? "—")}</span></div>` : ""}
     </div>
 
     <div class="actions">
