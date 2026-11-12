@@ -17,7 +17,7 @@ use crate::{cli, probe};
 const CACHE_TTL_SECONDS: i64 = 6 * 60 * 60;
 /// Bump when the shape of a cached payload changes (e.g. number of releases) or
 /// when a key would resolve to different releases than before.
-const CACHE_VERSION: &str = "v4";
+const CACHE_VERSION: &str = "v5";
 const MAX_RELEASES: usize = 8;
 const MAX_BODY_CHARS: usize = 20_000;
 const MAX_HITS: usize = 40;
@@ -30,6 +30,11 @@ const CACHE_LIMITS: Limits = Limits {
     max_bytes: 3 * 1024 * 1024,
     max_age_days: 45,
 };
+
+/// Repositories that tag versions but publish no GitHub release keep their notes
+/// in a changelog file. Only the spellings that actually occur are tried, and a
+/// miss costs one request before the feed stays as empty as it came.
+const CHANGELOG_PATHS: &[&str] = &["CHANGELOG.md", "changelog.md"];
 
 /// Some packages are published from a monorepo, so npm only names the umbrella
 /// repository and the button would open a releases page that usually holds
@@ -439,17 +444,43 @@ impl NotesService {
             .collect();
 
         // Newest first, whatever order the API used.
-        parsed.sort_by(|a, b| {
-            let left = parsers::parse_version(&a.version);
-            let right = parsers::parse_version(&b.version);
-            match (left, right) {
-                (Some(left), Some(right)) => right.cmp(&left),
-                _ => std::cmp::Ordering::Equal,
+        sort_newest_first(&mut parsed);
+
+        // An empty feed is not the same as no notes: some repositories tag every
+        // version and never open a release, so the changelog is the only place
+        // their notes exist.
+        if parsed.is_empty() {
+            if let Some((url, markdown)) = self.fetch_changelog(slug).await {
+                payload.url = Some(url);
+                payload.releases = releases_from_changelog(&markdown, installed);
             }
-        });
+            return payload;
+        }
 
         payload.releases = window(&parsed, installed).into_iter().map(trim_body).collect();
         payload
+    }
+
+    /// The changelog file of a repository, as published, with the page that shows
+    /// it. `None` when the repository has no changelog we can read.
+    async fn fetch_changelog(&self, slug: &str) -> Option<(String, String)> {
+        for path in CHANGELOG_PATHS {
+            let url = format!("https://raw.githubusercontent.com/{slug}/HEAD/{path}");
+            let Ok(response) = self.client.get(&url).send().await else {
+                continue;
+            };
+            if !response.status().is_success() {
+                continue;
+            }
+            let Ok(markdown) = response.text().await else {
+                continue;
+            };
+            if markdown.trim().is_empty() {
+                continue;
+            }
+            return Some((format!("https://github.com/{slug}/blob/HEAD/{path}"), markdown));
+        }
+        None
     }
 
     async fn fetch_npm(&self, mut payload: NotesPayload, package: &str) -> NotesPayload {
@@ -500,6 +531,29 @@ fn merge_releases(published: Vec<Release>, local: Vec<Release>) -> Vec<Release> 
 
 /// Picks the releases to show, newest first. When nothing is pending it keeps
 /// the newest `MAX_RELEASES` so history stays browsable with the prev/next nav.
+fn sort_newest_first(releases: &mut [Release]) {
+    releases.sort_by(|a, b| {
+        let left = parsers::parse_version(&a.version);
+        let right = parsers::parse_version(&b.version);
+        match (left, right) {
+            (Some(left), Some(right)) => right.cmp(&left),
+            _ => std::cmp::Ordering::Equal,
+        }
+    });
+}
+
+/// A changelog turned into the same `Release` list the release feed produces, so
+/// the detail view needs no special case: one entry per version heading, holding
+/// only that version's section.
+fn releases_from_changelog(markdown: &str, installed: Option<&str>) -> Vec<Release> {
+    let mut releases = parsers::parse_changelog(markdown);
+    sort_newest_first(&mut releases);
+    window(&releases, installed)
+        .into_iter()
+        .map(trim_body)
+        .collect()
+}
+
 fn window(releases: &[Release], installed: Option<&str>) -> Vec<Release> {
     let mut pending = parsers::releases_between(releases, installed);
     if pending.is_empty() {
@@ -582,11 +636,12 @@ mod tests {
 
     #[test]
     fn keys_under_an_older_cache_version_are_stale() {
-        assert!(is_current_cache_key("v4|gh:o/r|1.0.0|1.1.0"));
+        assert!(is_current_cache_key("v5|gh:o/r|1.0.0|1.1.0"));
         assert!(
-            !is_current_cache_key("v3|gh:o/r|1.0.0|1.1.0"),
-            "notes cached before the published changelog was read can never be served again"
+            !is_current_cache_key("v4|gh:o/r|1.0.0|1.1.0"),
+            "notes cached before an empty feed was filled from the changelog can never be served again"
         );
+        assert!(!is_current_cache_key("v3|gh:o/r|1.0.0|1.1.0"));
         assert!(!is_current_cache_key("v2|gh:o/r|1.0.0|-"));
         assert!(
             !is_current_cache_key("v30|gh:o/r|1.0.0|-"),
@@ -767,5 +822,56 @@ mod tests {
                 ("1.4.0", "local 1.4.0"),
             ]
         );
+    }
+}
+
+#[cfg(test)]
+mod changelog_fallback_tests {
+    use super::*;
+
+    const CHANGELOG: &str = "# Changelog\n\nAll notable changes.\n\n## [1.4.0] - 2026-11-12\n\nFixed the thing.\n\n### Added\n\n- One entry.\n\n## [1.3.0] - 2026-11-01\n\nOlder news.\n\n## [1.2.0] - 2026-10-01\n\nOldest news.\n";
+
+    #[test]
+    fn the_pending_version_comes_from_its_own_section() {
+        let releases = releases_from_changelog(CHANGELOG, Some("1.3.0"));
+
+        assert_eq!(releases.len(), 1);
+        assert_eq!(releases[0].version, "1.4.0");
+        assert_eq!(releases[0].date.as_deref(), Some("2026-11-12"));
+        assert!(releases[0].body.contains("Fixed the thing."));
+        assert!(releases[0].body.contains("- One entry."));
+    }
+
+    #[test]
+    fn a_section_stops_at_the_next_version() {
+        let releases = releases_from_changelog(CHANGELOG, Some("1.3.0"));
+
+        assert!(!releases[0].body.contains("Older news."));
+        assert!(!releases[0].body.contains("All notable changes."));
+    }
+
+    #[test]
+    fn a_first_install_reads_the_newest_entries_newest_first() {
+        let versions: Vec<String> = releases_from_changelog(CHANGELOG, None)
+            .into_iter()
+            .map(|release| release.version)
+            .collect();
+
+        assert_eq!(versions, vec!["1.4.0", "1.3.0", "1.2.0"]);
+    }
+
+    #[test]
+    fn nothing_pending_still_shows_the_newest_sections() {
+        let versions: Vec<String> = releases_from_changelog(CHANGELOG, Some("1.4.0"))
+            .into_iter()
+            .map(|release| release.version)
+            .collect();
+
+        assert_eq!(versions, vec!["1.4.0", "1.3.0", "1.2.0"]);
+    }
+
+    #[test]
+    fn a_changelog_without_version_headings_yields_nothing() {
+        assert!(releases_from_changelog("# Changelog\n\nNothing yet.\n", None).is_empty());
     }
 }

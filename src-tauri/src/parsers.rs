@@ -234,7 +234,7 @@ pub fn parse_doctor(output: &str) -> DoctorReport {
 pub fn parse_changelog(markdown: &str) -> Vec<Release> {
     static HEADING: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
     let heading = HEADING.get_or_init(|| {
-        regex::Regex::new(r"^##\s+\[(?P<version>[^\]]+)\](?:\s+-\s+(?P<date>\S+))?\s*$")
+        regex::Regex::new(r"^##\s+\[(?P<version>[^\]]+)\](?:\s+[-\u{2013}\u{2014}]\s+(?P<date>\S+))?\s*$")
             .expect("static pattern")
     });
 
@@ -494,6 +494,20 @@ Status:  degraded
         assert!(releases[0].body.contains("Image input for classifiers"));
         assert!(!releases[0].body.contains("1.3.2"), "body stops at next heading");
         assert!(releases[1].body.contains("Compaction"));
+    }
+
+    #[test]
+    fn a_section_dated_with_an_em_dash_is_still_a_section() {
+        let markdown = "## [0.10.3] \u{2014} 2026-10-01\n\nOld entry.\n\n## [0.10.2] \u{2014} 2026-09-30\n\nOlder entry.\n";
+        let releases = parse_changelog(markdown);
+
+        assert_eq!(
+            releases.iter().map(|r| r.version.as_str()).collect::<Vec<_>>(),
+            vec!["0.10.3", "0.10.2"],
+            "older entries in a changelog use a dash the headings must still accept"
+        );
+        assert_eq!(releases[0].date.as_deref(), Some("2026-10-01"));
+        assert!(releases[0].body.contains("Old entry."));
     }
 
     #[test]
