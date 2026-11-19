@@ -11,6 +11,7 @@ mod locale;
 mod notes;
 mod panel;
 mod parsers;
+mod prefetch;
 mod probe;
 mod scheduler;
 mod service;

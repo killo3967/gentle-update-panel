@@ -62,6 +62,15 @@ pub async fn run_check(app: &AppHandle) -> Snapshot {
     if fresh.is_empty() {
         return snapshot;
     }
+    // Notes and their translation are warmed aside from the check, so the detail
+    // opens ready and nothing here waits for a translation engine.
+    let found: Vec<UpdateItem> = snapshot
+        .items
+        .iter()
+        .filter(|item| fresh.contains(&item.id))
+        .cloned()
+        .collect();
+    crate::prefetch::spawn(app, found);
 
     if config.notify_on_update {
         notify(app, &snapshot, &fresh, config.automation);

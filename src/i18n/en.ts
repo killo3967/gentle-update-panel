@@ -317,6 +317,7 @@ export const en: SourceDict = {
     "{items} pieces · {pending} pending · {seconds} s · {warnings} warnings",
   "journal.detected.update": "Update detected: {name}",
   "journal.detected.missing": "Pending install: {name}",
+  "journal.notesWarmed": "Notes translated: {name}",
   "journal.apply.manual": "Manual update",
   "journal.apply.auto": "Automatic update",
   "journal.apply.none": "Nothing to update",

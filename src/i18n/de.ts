@@ -326,6 +326,7 @@ export const de: SourceDict = {
     "{items} Komponenten · {pending} offen · {seconds} s · {warnings} Hinweise",
   "journal.detected.update": "Aktualisierung erkannt: {name}",
   "journal.detected.missing": "Noch zu installieren: {name}",
+  "journal.notesWarmed": "Notizen übersetzt: {name}",
   "journal.apply.manual": "Manuelle Aktualisierung",
   "journal.apply.auto": "Automatische Aktualisierung",
   "journal.apply.none": "Nichts zu aktualisieren",

@@ -318,6 +318,7 @@ export const es = {
     "{items} piezas · {pending} pendientes · {seconds} s · {warnings} avisos",
   "journal.detected.update": "Actualización detectada: {name}",
   "journal.detected.missing": "Pendiente de instalar: {name}",
+  "journal.notesWarmed": "Notas traducidas: {name}",
   "journal.apply.manual": "Actualización manual",
   "journal.apply.auto": "Actualización automática",
   "journal.apply.none": "Nada que actualizar",

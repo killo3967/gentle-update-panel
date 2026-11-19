@@ -325,6 +325,7 @@ export const pt: SourceDict = {
     "{items} peças · {pending} pendentes · {seconds} s · {warnings} avisos",
   "journal.detected.update": "Atualização detetada: {name}",
   "journal.detected.missing": "Pendente de instalação: {name}",
+  "journal.notesWarmed": "Notas traduzidas: {name}",
   "journal.apply.manual": "Atualização manual",
   "journal.apply.auto": "Atualização automática",
   "journal.apply.none": "Nada a atualizar",

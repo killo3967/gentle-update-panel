@@ -186,7 +186,7 @@ const JOURNAL_KINDS: Record<JournalFilter, JournalEntry["kind"][] | null> = {
   all: null,
   detected: ["detected", "panel"],
   updates: ["apply", "step", "output", "applied", "failed", "panel"],
-  checks: ["check", "doctor"],
+  checks: ["check", "doctor", "notes"],
   problems: ["failed", "preflight"],
 };
 

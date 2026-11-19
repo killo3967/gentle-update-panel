@@ -200,6 +200,7 @@ export type JournalKind =
   | "applied"
   | "failed"
   | "doctor"
+  | "notes"
   | "panel";
 
 /** A newer release of the panel itself, offered from the tray or the panel. */

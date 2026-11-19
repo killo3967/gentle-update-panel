@@ -52,6 +52,8 @@ pub mod kind {
     pub const APPLIED: &str = "applied";
     pub const FAILED: &str = "failed";
     pub const DOCTOR: &str = "doctor";
+    /// Notes of a pending version, fetched and translated ahead of the detail.
+    pub const NOTES: &str = "notes";
     /// The panel's own release: found, then updated.
     pub const PANEL: &str = "panel";
 }
