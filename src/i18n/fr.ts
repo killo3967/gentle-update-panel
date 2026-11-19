@@ -337,6 +337,7 @@ export const fr: SourceDict = {
     "aucune vérification enregistrée ; relance une vérification",
   "journal.apply.failedItem": "{name} n'a pas pu être mis à jour",
   "journal.apply.noAuto": "{name} ne se met pas à jour automatiquement",
+  "journal.apply.syncSkipped": "{name} n'a pas été synchronisé : sa mise à jour n'a pas été appliquée",
   "journal.applied": "{name} mis à jour",
   "journal.doctor.manual": "Doctor manuel : {status}",
   "journal.doctor.afterUpdate": "Doctor après mise à jour : {status}",

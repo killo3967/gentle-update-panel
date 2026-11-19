@@ -326,6 +326,7 @@ export const en: SourceDict = {
   "journal.apply.failedNoSnapshot": "there is no saved check; run a check again",
   "journal.apply.failedItem": "{name} could not be updated",
   "journal.apply.noAuto": "{name} is not updated automatically",
+  "journal.apply.syncSkipped": "{name} was not synced: its update did not run",
   "journal.applied": "{name} updated",
   "journal.doctor.manual": "Manual doctor: {status}",
   "journal.doctor.afterUpdate": "Doctor after updating: {status}",

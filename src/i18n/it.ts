@@ -335,6 +335,7 @@ export const it: SourceDict = {
     "non c'è un controllo salvato; controlla di nuovo",
   "journal.apply.failedItem": "Impossibile aggiornare {name}",
   "journal.apply.noAuto": "{name} non si aggiorna automaticamente",
+  "journal.apply.syncSkipped": "{name} non è stato sincronizzato: il suo aggiornamento non è stato applicato",
   "journal.applied": "{name} aggiornato",
   "journal.doctor.manual": "Doctor manuale: {status}",
   "journal.doctor.afterUpdate": "Doctor dopo l'aggiornamento: {status}",

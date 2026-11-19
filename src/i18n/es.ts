@@ -327,6 +327,7 @@ export const es = {
   "journal.apply.failedNoSnapshot": "no hay una comprobación guardada; comprueba de nuevo",
   "journal.apply.failedItem": "{name} no se pudo actualizar",
   "journal.apply.noAuto": "{name} no se actualiza automáticamente",
+  "journal.apply.syncSkipped": "{name} no se sincronizó: su actualización no se aplicó",
   "journal.applied": "{name} actualizado",
   "journal.doctor.manual": "Doctor manual: {status}",
   "journal.doctor.afterUpdate": "Doctor tras actualizar: {status}",

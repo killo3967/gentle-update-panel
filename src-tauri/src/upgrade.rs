@@ -20,6 +20,14 @@ pub enum Origin {
     Auto,
 }
 
+/// The piece whose CLI keeps the agent files in tune: a batch that updates it
+/// gets one `sync` at the end.
+const GENTLE_AI_ID: &str = "gentle-ai";
+
+/// Identifier of the trailing sync step. It is not an update row, so it cannot
+/// collide with a snapshot item.
+const SYNC_STEP: &str = "gentle-ai:sync";
+
 /// One executable step: the UI-facing description plus the argv to run.
 pub struct PlannedStep {
     pub step: ApplyStep,
@@ -133,6 +141,27 @@ fn is_harness_package(source: &str) -> bool {
 
 /// Runs every step in plan order and then `gentle-ai doctor` when configured.
 /// The caller is responsible for re-checking afterwards.
+/// Appends the trailing `gentle-ai sync` when the batch updates the tool
+/// itself. It goes last, so the doctor that `apply` runs afterwards reads the
+/// files the sync has just written.
+fn with_sync(mut steps: Vec<PlannedStep>) -> Vec<PlannedStep> {
+    if !steps.iter().any(|planned| planned.step.id == GENTLE_AI_ID) {
+        return steps;
+    }
+    steps.push(PlannedStep {
+        step: ApplyStep {
+            id: SYNC_STEP.to_string(),
+            label: "gentle-ai · sincronizar".to_string(),
+            command: "gentle-ai sync".to_string(),
+        },
+        program: "gentle-ai".to_string(),
+        args: vec!["sync".to_string()],
+        name: GENTLE_AI_ID.to_string(),
+        versions: None,
+    });
+    steps
+}
+
 pub async fn apply(app: &AppHandle, ids: Vec<String>, origin: Origin) -> ApplyOutcome {
     let Some(snapshot) = app.state::<AppState>().snapshot() else {
         journal::record(
@@ -155,7 +184,7 @@ pub async fn apply(app: &AppHandle, ids: Vec<String>, origin: Origin) -> ApplyOu
         };
     };
 
-    let steps = plan(&snapshot, &ids);
+    let steps = with_sync(plan(&snapshot, &ids));
     let mut applied = Vec::new();
     let mut failed = Vec::new();
 
@@ -203,6 +232,26 @@ pub async fn apply(app: &AppHandle, ids: Vec<String>, origin: Origin) -> ApplyOu
             }),
         );
 
+        // A sync is only worth running when the update it follows landed: it
+        // would otherwise sync a version that was never installed.
+        if planned.step.id == SYNC_STEP && failed.iter().any(|failure| failure.id == GENTLE_AI_ID) {
+            journal::record(
+                app,
+                Draft::new(kind::STEP, format!("$ {}", planned.step.command))
+                    .key("journal.apply.syncSkipped")
+                    .arg("name", planned.name.clone())
+                    .detail(&planned.step.label)
+                    .item(&planned.step.id),
+            );
+            failed.push(ApplyFailure {
+                id: planned.step.id.clone(),
+                label: planned.step.label.clone(),
+                reason: "gentle-ai no se actualizó, así que no hay nada que sincronizar"
+                    .to_string(),
+                output: String::new(),
+            });
+            continue;
+        }
         if planned.program.is_empty() {
             journal::record(
                 app,
@@ -288,7 +337,11 @@ pub async fn apply(app: &AppHandle, ids: Vec<String>, origin: Origin) -> ApplyOu
 
         match result {
             Ok(output) if output.ok() => {
-                applied.push(planned.step.id.clone());
+                // The sync is a follow-up step, not a piece: counting it would
+                // tell the user that more was updated than was.
+                if planned.step.id != SYNC_STEP {
+                    applied.push(planned.step.id.clone());
+                }
                 let _ = app.emit(
                     "apply:log",
                     LogEvent {
@@ -457,6 +510,56 @@ mod tests {
             notes_key: None,
             ignored: false,
         }
+    }
+
+    #[test]
+    fn a_batch_that_updates_gentle_ai_ends_with_sync() {
+        let snapshot = Snapshot {
+            checked_at: "now".to_string(),
+            duration_ms: 0,
+            items: vec![
+                item(
+                    "gentle-ai",
+                    Upgrade::GentleAiTool {
+                        tool: "gentle-ai".into(),
+                    },
+                    Status::UpdateAvailable,
+                ),
+                item(
+                    "pkg:npm:gentle-pi",
+                    Upgrade::PiPackage {
+                        source: "npm:gentle-pi".into(),
+                    },
+                    Status::UpdateAvailable,
+                ),
+            ],
+            warnings: Vec::new(),
+        };
+
+        let steps = with_sync(plan(
+            &snapshot,
+            &["pkg:npm:gentle-pi".to_string(), "gentle-ai".to_string()],
+        ));
+        let last = steps.last().expect("a batch has steps");
+        assert_eq!(last.step.id, SYNC_STEP);
+        assert_eq!(last.step.command, "gentle-ai sync");
+        assert_eq!(last.args, vec!["sync".to_string()]);
+    }
+
+    #[test]
+    fn a_batch_without_gentle_ai_does_not_sync() {
+        let snapshot = Snapshot {
+            checked_at: "now".to_string(),
+            duration_ms: 0,
+            items: vec![item("b", Upgrade::PiSelf, Status::UpdateAvailable)],
+            warnings: Vec::new(),
+        };
+
+        let steps = with_sync(plan(&snapshot, &["b".to_string()]));
+        assert!(
+            steps.iter().all(|planned| planned.step.id != SYNC_STEP),
+            "nothing synced when the tool itself is not updated"
+        );
     }
 
     #[test]

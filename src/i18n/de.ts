@@ -337,6 +337,7 @@ export const de: SourceDict = {
     "es gibt keine gespeicherte Prüfung; prüfe erneut",
   "journal.apply.failedItem": "{name} konnte nicht aktualisiert werden",
   "journal.apply.noAuto": "{name} wird nicht automatisch aktualisiert",
+  "journal.apply.syncSkipped": "{name} wurde nicht synchronisiert: seine Aktualisierung wurde nicht ausgeführt",
   "journal.applied": "{name} aktualisiert",
   "journal.doctor.manual": "Doctor manuell: {status}",
   "journal.doctor.afterUpdate": "Doctor nach der Aktualisierung: {status}",
