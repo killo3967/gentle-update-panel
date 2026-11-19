@@ -46,6 +46,9 @@ pub fn run() {
         .setup(|app| {
             let handle = app.handle().clone();
             app.manage(state::AppState::new(&handle));
+            // Before the tray is built: its labels are read from the language.
+            let language = handle.state::<state::AppState>().config().language;
+            locale::set_language(language.as_deref());
             tray::build(&handle)?;
 
             journal::record(

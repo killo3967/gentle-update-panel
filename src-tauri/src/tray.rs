@@ -71,9 +71,31 @@ pub fn build(app: &AppHandle) -> tauri::Result<()> {
         if let Ok(mut slot) = state.tray_panel_item.lock() {
             *slot = Some(panel);
         }
+        if let Ok(mut slot) = state.tray_menu_items.lock() {
+            *slot = vec![
+                ("tray.open", open),
+                ("tray.check", check),
+                ("tray.doctor", doctor),
+                ("tray.quit", quit),
+            ];
+        }
     }
 
     Ok(())
+}
+
+/// Relabels the entries that do not depend on the snapshot, then the ones that
+/// do. Called when the language changes: the tray is built once, and its texts
+/// are whatever the language was at that moment.
+pub fn retitle(app: &AppHandle) {
+    if let Some(state) = app.try_state::<AppState>() {
+        if let Ok(items) = state.tray_menu_items.lock() {
+            for (key, item) in items.iter() {
+                let _ = item.set_text(crate::i18n::t(key));
+            }
+        }
+    }
+    reflect(app);
 }
 
 /// Reflects both the snapshot and the panel's own update in the tray.

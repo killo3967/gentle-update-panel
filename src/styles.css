@@ -1855,6 +1855,40 @@ button {
   max-width: 68ch;
 }
 
+.select-field {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  padding: var(--space-3) var(--space-4) 0;
+}
+
+.select-label {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.select {
+  min-width: 190px;
+  padding: 7px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel-2);
+  color: var(--text);
+  font: inherit;
+  font-size: 12.5px;
+  cursor: pointer;
+}
+
+.select:hover {
+  border-color: var(--panel-3);
+}
+
+.select:focus-visible {
+  outline: 2px solid var(--accent, var(--text));
+  outline-offset: 2px;
+}
+
 .ignore-groups {
   display: flex;
   flex-direction: column;

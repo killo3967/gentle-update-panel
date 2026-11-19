@@ -59,6 +59,9 @@ export const events = {
   preselect: (handler: (ids: string[]) => void) =>
     listen<string[]>("preselect", (event) => handler(event.payload)),
   openDoctor: (handler: () => void) => listen("open-doctor", () => handler()),
+  // The language picked in Settings, applied here once the backend has it.
+  locale: (handler: (tag: string) => void) =>
+    listen<string>("locale", (event) => handler(event.payload)),
   journal: (handler: (entry: JournalEntry) => void) =>
     listen<JournalEntry>("journal:entry", (event) => handler(event.payload)),
   panelUpdate: (handler: (update: PanelUpdate | null) => void) =>

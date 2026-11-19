@@ -180,6 +180,11 @@ export const it: SourceDict = {
   "settings.title": "Come controlla",
   "settings.lead":
     "Il controllo gira in background; qui decidi ogni quanto e cosa fa quando trova novità.",
+  "settings.language": "Lingua",
+  "settings.languageLabel": "Lingua del pannello",
+  "settings.languageHelp":
+    "Vale per la finestra, per la barra e per la lingua in cui si traducono le note. Se il sistema ne parla una che il pannello non ha, si mostra in inglese.",
+  "settings.languageSystem": "La stessa di Windows",
   "settings.frequency": "Frequenza",
   "settings.frequencyLabel": "Frequenza del controllo",
   "settings.manualOnly": "solo manuale",

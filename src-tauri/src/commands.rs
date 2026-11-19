@@ -77,6 +77,13 @@ pub fn save_config(app: AppHandle, mut config: Config) -> Config {
         *current = config.clone();
     }
 
+    // The language is one decision with three effects: the webview dictionaries,
+    // the tray labels and the language notes are translated into. Applying it
+    // here keeps them from disagreeing.
+    crate::locale::set_language(config.language.as_deref());
+    crate::tray::retitle(&app);
+    let _ = app.emit("locale", crate::locale::target_language());
+
     // Keep the stored snapshot consistent with the new ignore list so counters,
     // the tray badge and the window update without waiting for a re-check.
     if let Some(mut snapshot) = state.snapshot() {

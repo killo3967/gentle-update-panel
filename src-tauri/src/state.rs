@@ -23,6 +23,9 @@ pub struct AppState {
     pub panel: Mutex<Option<PanelUpdate>>,
     /// Tray entry that offers that release; disabled while there is none.
     pub tray_panel_item: Mutex<Option<tauri::menu::MenuItem<tauri::Wry>>>,
+    /// Tray entries whose text depends on the language, with their text key, so
+    /// picking another language relabels them instead of rebuilding the tray.
+    pub tray_menu_items: Mutex<Vec<(&'static str, tauri::menu::MenuItem<tauri::Wry>)>>,
     pub notes: Arc<NotesService>,
     pub translations: Arc<TranslationService>,
     pub config_path: PathBuf,
@@ -69,6 +72,7 @@ impl AppState {
             journal: Mutex::new(Journal::new(journal_path)),
             panel: Mutex::new(panel),
             tray_panel_item: Mutex::new(None),
+            tray_menu_items: Mutex::new(Vec::new()),
             notes: Arc::new(NotesService::new(notes_path)),
             translations: Arc::new(TranslationService::new(translations_path)),
             config_path,

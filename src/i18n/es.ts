@@ -179,6 +179,11 @@ export const es = {
   "settings.title": "Cómo vigila",
   "settings.lead":
     "La comprobación corre en segundo plano; aquí decides cada cuánto y qué hace al encontrar novedades.",
+  "settings.language": "Idioma",
+  "settings.languageLabel": "Idioma del panel",
+  "settings.languageHelp":
+    "Manda en la ventana, en la bandeja y en el idioma al que se traducen las notas. Si el sistema habla uno que el panel no tiene, se muestra en inglés.",
+  "settings.languageSystem": "El mismo que Windows",
   "settings.frequency": "Frecuencia",
   "settings.frequencyLabel": "Frecuencia de comprobación",
   "settings.manualOnly": "solo manual",

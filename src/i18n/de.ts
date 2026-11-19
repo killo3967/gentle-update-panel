@@ -180,6 +180,11 @@ export const de: SourceDict = {
   "settings.title": "Wie geprüft wird",
   "settings.lead":
     "Die Prüfung läuft im Hintergrund; hier legst du fest, wie oft sie läuft und was sie bei Neuigkeiten tut.",
+  "settings.language": "Sprache",
+  "settings.languageLabel": "Sprache des Panels",
+  "settings.languageHelp":
+    "Gilt für das Fenster, die Taskleiste und die Sprache, in die Notizen übersetzt werden. Spricht das System eine, die das Panel nicht hat, wird es auf Englisch angezeigt.",
+  "settings.languageSystem": "Wie Windows",
   "settings.frequency": "Häufigkeit",
   "settings.frequencyLabel": "Häufigkeit der Prüfung",
   "settings.manualOnly": "nur manuell",

@@ -20,12 +20,15 @@ enum Lang {
 impl Lang {
     fn from_tag(tag: &str) -> Lang {
         match tag.trim().to_ascii_lowercase().split(['-', '_']).next() {
+            Some("es") => Lang::Es,
             Some("en") => Lang::En,
             Some("pt") => Lang::Pt,
             Some("fr") => Lang::Fr,
             Some("it") => Lang::It,
             Some("de") => Lang::De,
-            _ => Lang::Es,
+            // Not one of the six: the panel has no texts for it, and English is
+            // the language it always has something to say in.
+            _ => Lang::En,
         }
     }
 
@@ -185,7 +188,8 @@ const ROWS: &[(&str, [&str; 6])] = &[
     ),
 ];
 
-/// Translation of `key` in the system language, with Spanish as the fallback.
+/// Translation of `key` in the panel's language: the one picked in Settings, or
+/// the system's when nothing was picked.
 pub fn t(key: &str) -> &'static str {
     let index = lang().index();
     ROWS.iter()
@@ -249,8 +253,11 @@ mod tests {
         assert_eq!(Lang::from_tag("fr"), Lang::Fr);
         assert_eq!(Lang::from_tag("it-IT"), Lang::It);
         assert_eq!(Lang::from_tag("de-DE"), Lang::De);
-        assert_eq!(Lang::from_tag("ru-RU"), Lang::Es);
-        assert_eq!(Lang::from_tag(""), Lang::Es);
+        // Not among the six: English, not Spanish.
+        assert_eq!(Lang::from_tag("ru-RU"), Lang::En);
+        assert_eq!(Lang::from_tag("ca"), Lang::En);
+        assert_eq!(Lang::from_tag("zh-Hans-CN"), Lang::En);
+        assert_eq!(Lang::from_tag(""), Lang::En);
     }
 
     #[test]

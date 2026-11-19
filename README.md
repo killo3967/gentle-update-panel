@@ -17,7 +17,7 @@ pi packages (npm and git)       <- pi list + package.json + npm registry
 
 ## What it does
 
-- **Speaks the language of Windows**: the interface, the tray, the notifications and the new Registry entries follow the system language, in Spanish, English, Portuguese, French, Italian or German. If yours is not among them it falls back to Spanish. The dictionaries live in `src/i18n/` and key parity is enforced by the compiler: every dictionary is typed against the Spanish keys, so an incomplete translation does not compile.
+- **Speaks the language you pick**: the interface, the tray, the notifications and the new Registry entries come in Spanish, English, Portuguese, French, Italian or German. Settings has a language control; left on *Same as Windows* it follows the system language, and a language the panel was never translated into falls back to English. The dictionaries live in `src/i18n/` and key parity is enforced by the compiler: every dictionary is typed against the Spanish keys, so an incomplete translation does not compile.
 
 - **Checks** the ecosystem (`gentle-ai update`), the `pi` version and every package declared in `pi list`.
 - **Shows what is new**: one version at a time, with `←` `→` arrows to walk the history (up to 8 releases), clickable links that open the browser (GitHub autolinks to `#123` and to commits included) and its own context menu on every link.

@@ -39,7 +39,12 @@ export type SourceDict = { [K in keyof typeof es]: Entry };
 // compile, so the six dictionaries cannot drift apart.
 export const DICTIONARIES: Record<Locale, SourceDict> = { es, en, pt, fr, it, de };
 
-const FALLBACK: Locale = "es";
+/** The dictionary every other one is checked against: the source text is the
+ * one guaranteed to be complete, so a missing key falls back to it. */
+const SOURCE: Locale = "es";
+
+/** What the panel speaks when the system language is not one of the six. */
+const FALLBACK: Locale = "en";
 let current: Locale = FALLBACK;
 
 /** Language tag for Intl formatters, e.g. `es-ES`. */
@@ -62,8 +67,9 @@ export function localeTag(): string {
 }
 
 /**
- * `es-ES` → `es`. An unknown or empty tag keeps Spanish: the panel always has to
- * say something, and the source language is the one guaranteed to be complete.
+ * `es-ES` → `es`. An unknown or empty tag falls back to English: the panel always
+ * has to say something, and that is the language it has texts for when the
+ * system speaks one it was never translated into.
  */
 export function setLocale(tag: string | null | undefined): Locale {
   const base = (tag ?? "").trim().toLowerCase().split(/[-_]/)[0];
@@ -81,8 +87,8 @@ function fill(text: string, params?: Params): string {
 function entry(key: string): Entry | undefined {
   // The dictionaries are keyed precisely, so a runtime lookup needs the wide form.
   const active = DICTIONARIES[current] as Record<string, Entry | undefined>;
-  const fallback = DICTIONARIES[FALLBACK] as Record<string, Entry | undefined>;
-  return active[key] ?? fallback[key];
+  const source = DICTIONARIES[SOURCE] as Record<string, Entry | undefined>;
+  return active[key] ?? source[key];
 }
 
 function pluralForm(forms: Plural, count: number): string {

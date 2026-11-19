@@ -130,6 +130,8 @@ pub struct Config {
     pub ignore_missing_tools: bool,
     /// Translate release notes on demand.
     pub translation_enabled: bool,
+    /// Language picked in Settings, e.g. `en`. Empty follows Windows.
+    pub language: Option<String>,
 }
 
 impl Default for Config {
@@ -146,6 +148,7 @@ impl Default for Config {
             doctor_ignored: Vec::new(),
             ignore_missing_tools: false,
             translation_enabled: true,
+            language: None,
         }
     }
 }

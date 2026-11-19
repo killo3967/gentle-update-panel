@@ -30,8 +30,11 @@ impl Drop for Slot {
 /// The key the detail view asks the translation with, so the warm-up and the
 /// panel land on the same cache entry. Mirrors what `loadTranslation` in
 /// `store.ts` puts in front of `translationKey`.
-pub fn translation_cache_key(notes_key: &str, version: &str) -> String {
-    format!("{notes_key}|{version}")
+///
+/// The language is part of the key: picking another one has to translate again,
+/// not show whatever was cached for the previous language.
+pub fn translation_cache_key(notes_key: &str, version: &str, language: &str) -> String {
+    format!("{notes_key}|{version}|{language}")
 }
 
 /// The release the panel opens first: the pending one, not the newest of the
@@ -102,7 +105,7 @@ async fn warm(app: &AppHandle, items: Vec<UpdateItem>) {
         if release.body.trim().is_empty() {
             continue;
         }
-        let cache_key = translation_cache_key(notes_key, &release.version);
+        let cache_key = translation_cache_key(notes_key, &release.version, &target);
         if translations
             .translate(&cache_key, &release.body, "auto", &target, false)
             .await
@@ -135,8 +138,16 @@ mod tests {
     #[test]
     fn warms_the_key_the_detail_asks_for() {
         assert_eq!(
-            translation_cache_key("gh:owner/repo", "1.2.3"),
-            "gh:owner/repo|1.2.3"
+            translation_cache_key("gh:owner/repo", "1.2.3", "es"),
+            "gh:owner/repo|1.2.3|es"
+        );
+    }
+
+    #[test]
+    fn another_language_is_another_cache_entry() {
+        assert_ne!(
+            translation_cache_key("gh:owner/repo", "1.2.3", "es"),
+            translation_cache_key("gh:owner/repo", "1.2.3", "en")
         );
     }
 

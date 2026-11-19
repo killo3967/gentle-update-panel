@@ -738,6 +738,19 @@ const INTERVALS: Array<{ minutes: number; label: string }> = [
   { minutes: 0, label: "settings.manual" },
 ];
 
+/** The seven choices of the language control: follow Windows, or one of the six
+ * the panel is translated into. The names are written in their own language,
+ * so nobody has to guess which one is theirs. */
+const LANGUAGES: Array<{ value: string; name?: string; label?: string }> = [
+  { value: "", label: "settings.languageSystem" },
+  { value: "es", name: "Español" },
+  { value: "en", name: "English" },
+  { value: "pt", name: "Português" },
+  { value: "fr", name: "Français" },
+  { value: "it", name: "Italiano" },
+  { value: "de", name: "Deutsch" },
+];
+
 const AUTOMATION: Array<{ value: "notify" | "confirm" | "auto"; title: string; body: string }> = [
   {
     value: "notify",
@@ -768,6 +781,8 @@ function renderSettings(): string {
         <p class="lead">${t("settings.lead")}</p>
       </div>
     </header>
+
+    ${renderLanguageCard()}
 
     <section class="card">
       <header class="card-head"><h2 class="card-title">${t("settings.frequency")}</h2><span class="card-meta">${config.intervalMinutes === 0 ? t("settings.manualOnly") : t("settings.every", { interval: labelFor(config.intervalMinutes) })}</span></header>
@@ -910,6 +925,26 @@ function renderDoctorRulesCard(): string {
       </div>
     </div>
     ${rows ? `<div class="ignore-groups">${rows}</div>` : `<div class="notes-empty"><p>${t("settings.doctorRulesEmpty")}</p></div>`}
+  </section>`;
+}
+
+function renderLanguageCard(): string {
+  const config = state.config;
+  if (!config) return "";
+
+  const chosen = config.language ?? "";
+  const options = LANGUAGES.map((option) => {
+    const text = option.name ?? t(option.label ?? "");
+    return `<option value="${option.value}" ${option.value === chosen ? "selected" : ""}>${esc(text)}</option>`;
+  }).join("");
+
+  return `<section class="card">
+    <header class="card-head"><h2 class="card-title">${t("settings.language")}</h2></header>
+    <label class="select-field">
+      <span class="select-label">${t("settings.languageLabel")}</span>
+      <select class="select" data-action="set-language" aria-label="${t("settings.languageLabel")}">${options}</select>
+    </label>
+    <p class="card-help">${t("settings.languageHelp")}</p>
   </section>`;
 }
 

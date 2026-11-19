@@ -43,6 +43,7 @@ export interface Config {
   doctorIgnored: string[];
   ignoreMissingTools: boolean;
   translationEnabled: boolean;
+  language: string | null;
 }
 
 export interface TranslatedText {

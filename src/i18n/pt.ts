@@ -180,6 +180,11 @@ export const pt: SourceDict = {
   "settings.title": "Como vigia",
   "settings.lead":
     "A verificação corre em segundo plano; aqui decide com que frequência corre e o que faz ao encontrar novidades.",
+  "settings.language": "Idioma",
+  "settings.languageLabel": "Idioma do painel",
+  "settings.languageHelp":
+    "Vale para a janela, para a bandeja e para o idioma em que as notas são traduzidas. Se o sistema falar um que o painel não tem, mostra-se em inglês.",
+  "settings.languageSystem": "O mesmo do Windows",
   "settings.frequency": "Frequência",
   "settings.frequencyLabel": "Frequência de verificação",
   "settings.manualOnly": "apenas manual",

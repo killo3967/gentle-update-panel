@@ -178,6 +178,11 @@ export const en: SourceDict = {
   "settings.title": "How it watches",
   "settings.lead":
     "The check runs in the background; here you decide how often it runs and what it does when it finds something new.",
+  "settings.language": "Language",
+  "settings.languageLabel": "Panel language",
+  "settings.languageHelp":
+    "Applies to the window, the tray and the language notes are translated into. When the system speaks one the panel does not have, it shows English.",
+  "settings.languageSystem": "Same as Windows",
   "settings.frequency": "Frequency",
   "settings.frequencyLabel": "Check frequency",
   "settings.manualOnly": "manual only",

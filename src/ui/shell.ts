@@ -498,6 +498,13 @@ function handleChange(event: Event): void {
   const preflight = target.closest<HTMLInputElement>("input[data-preflight-step]");
   if (preflight?.dataset.id) {
     togglePreflightStep(preflight.dataset.id);
+    return;
+  }
+
+  const language = target.closest<HTMLSelectElement>('select[data-action="set-language"]');
+  if (language) {
+    // The empty value follows Windows; anything else is one of the six.
+    void saveConfig({ language: language.value === "" ? null : language.value });
   }
 }
 

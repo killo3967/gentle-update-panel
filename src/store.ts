@@ -20,7 +20,7 @@ import type {
   Release,
 } from "./types";
 import { isActionable, journalDetail, journalTitle } from "./ui/format";
-import { setLocale, t, tn, translateError } from "./i18n";
+import { locale, setLocale, t, tn, translateError } from "./i18n";
 
 export type View = "overview" | "doctor" | "log" | "settings";
 
@@ -292,6 +292,7 @@ export async function init(): Promise<void> {
     offPanelProgress,
     offPanelApplying,
     offPanelError,
+    offLocale,
   ] = await Promise.all([
       events.snapshot((snapshot) => {
         setState({ snapshot });
@@ -321,6 +322,11 @@ export async function init(): Promise<void> {
         setState({ panelBusy: false });
         toast(t("toast.panelFailed", { error: message }), "error");
       }),
+      events.locale((tag) => {
+        setLocale(tag);
+        // Nothing else changed, but every word on screen did.
+        setState({});
+      }),
     ]);
 
   unlisteners.push(
@@ -336,6 +342,7 @@ export async function init(): Promise<void> {
     offPanelProgress,
     offPanelApplying,
     offPanelError,
+    offLocale,
   );
 
   try {
@@ -718,7 +725,9 @@ export async function loadNotes(item: UpdateItem, force = false): Promise<void> 
 }
 
 export function translationKey(item: UpdateItem, release: Release): string {
-  return `${item.id}|${release.version}`;
+  // The language is part of the key: the same release in another language is
+  // another translation, not a cached one.
+  return `${item.id}|${release.version}|${locale()}`;
 }
 
 /**
@@ -742,7 +751,7 @@ export async function loadTranslation(item: UpdateItem, release: Release): Promi
 
   setState({ translationBusy: { ...state.translationBusy, [key]: true } });
   try {
-    const result = await api.translate(`${item.notesKey}|${release.version}`, release.body);
+    const result = await api.translate(`${item.notesKey}|${release.version}|${locale()}`, release.body);
     setState({
       translations: {
         ...state.translations,

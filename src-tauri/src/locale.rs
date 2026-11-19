@@ -1,7 +1,36 @@
-//! The language release notes are translated into: the one the system is set to.
+//! The language the panel speaks and the one release notes are translated into:
+//! the one picked in Settings, or the one the system is set to when nothing has
+//! been picked.
+
+use std::sync::RwLock;
+
+/// Languages the panel has texts for. Anything else is not a target: it falls
+/// back to English, which is not a promise about the user but about the panel —
+/// it always has something to say.
+pub const SUPPORTED: [&str; 6] = ["es", "en", "pt", "fr", "it", "de"];
+
+/// The language picked in Settings. `None` follows Windows.
+static CHOSEN: RwLock<Option<String>> = RwLock::new(None);
+
+/// Records the language the user picked. `None` follows Windows, and anything
+/// outside [`SUPPORTED`] is ignored: a stale or hand-edited config file cannot
+/// leave the panel in a language it has no texts for.
+pub fn set_language(language: Option<&str>) {
+    let chosen = language
+        .and_then(primary_language)
+        .filter(|code| SUPPORTED.contains(&code.as_str()));
+    if let Ok(mut slot) = CHOSEN.write() {
+        *slot = chosen;
+    }
+}
 
 /// ISO 639-1 code of the language the user reads, e.g. `es`.
 pub fn target_language() -> String {
+    if let Ok(slot) = CHOSEN.read() {
+        if let Some(chosen) = slot.as_ref() {
+            return chosen.clone();
+        }
+    }
     os_locale()
         .as_deref()
         .and_then(primary_language)
@@ -80,6 +109,19 @@ mod tests {
         assert_eq!(primary_language("e"), None);
         assert_eq!(primary_language("español"), None);
         assert_eq!(primary_language("123"), None);
+    }
+
+    #[test]
+    fn a_chosen_language_wins_and_unsupported_ones_are_ignored() {
+        set_language(Some("de-DE"));
+        assert_eq!(target_language(), "de", "the region is dropped, the choice is not");
+
+        // Catalan is a language Windows knows and the panel has no texts for.
+        set_language(Some("ca"));
+        assert_ne!(target_language(), "ca");
+
+        set_language(None);
+        assert_eq!(primary_language(&target_language()).as_deref(), Some(target_language().as_str()));
     }
 
     #[test]
